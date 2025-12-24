@@ -33,7 +33,7 @@ export default function CodeGeneratorPanel({ anchor, initialPosition }: CodeGene
         }
 
         const x = anchor.x.toFixed(4);
-        const y = anchor.y.toFixed(4);
+        const y = 2.7; // Hardcoded y-position as requested
         const z = anchor.z.toFixed(4);
 
         const code = `{
@@ -59,9 +59,8 @@ export default function CodeGeneratorPanel({ anchor, initialPosition }: CodeGene
 
     const handleCopyAll = () => {
         if (allGeneratedCode) {
-            // Wrap in brackets when copying for a valid array
-            const codeToCopy = `[\n${allGeneratedCode}\n]`;
-            navigator.clipboard.writeText(codeToCopy);
+            // No brackets for a comma-separated list
+            navigator.clipboard.writeText(allGeneratedCode);
             toast({
                 title: "All Code Copied!",
                 description: "The collected snippets have been copied to your clipboard.",
