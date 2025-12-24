@@ -80,12 +80,12 @@ const DraggablePanel = ({ id, title, icon, description, children, initialPositio
 // Function to map scene coordinates to your target coordinate system
 const mapCoordinates = (sceneCoords: THREE.Vector3): THREE.Vector3 => {
     // Based on the example:
-    // Scene: X: 0.5909, Y: 1.1460, Z: -2.7511
+    // Scene: X: 15.8739, Y: 3.9051, Z: -5.1564
     // Target: X: 8.0, Y: 3, Z: -4
     
     // This is a simple offset calculation. If there's scaling involved,
     // we would need more points to determine the transformation accurately.
-    const sceneP = { x: 0.5909, y: 1.1460, z: -2.7511 };
+    const sceneP = { x: 15.8739, y: 3.9051, z: -5.1564 };
     const targetP = { x: 8, y: 3, z: -4 };
 
     const offsetX = targetP.x - sceneP.x;
