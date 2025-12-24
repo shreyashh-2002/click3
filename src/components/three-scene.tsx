@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -86,18 +87,24 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
             }
         });
 
-        // Center and scale model
+        // Center, scale, and align model to ground
         const box = new THREE.Box3().setFromObject(model);
-        const center = box.getCenter(new THREE.Vector3());
-        model.position.sub(center); // Center model at origin
         const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+
+        // Scale model to a consistent size
         const maxDim = Math.max(size.x, size.y, size.z);
         const scale = 3 / maxDim;
         model.scale.set(scale, scale, scale);
-        
-        // Adjust position so the bottom of the model sits on the ground (y=0)
-        const newBox = new THREE.Box3().setFromObject(model);
-        model.position.y = -newBox.min.y;
+
+        // Recalculate bounding box after scaling
+        const scaledBox = new THREE.Box3().setFromObject(model);
+        const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
+
+        // Center the model and place its bottom on the ground plane (y=0)
+        model.position.x += (scaledBox.min.x - scaledCenter.x);
+        model.position.y -= scaledBox.min.y;
+        model.position.z += (scaledBox.min.z - scaledCenter.z);
 
         if (currentModel) {
             scene.remove(currentModel);
@@ -121,7 +128,6 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
         metalness: 0.9,
       });
       const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.y = 1.5;
       fallbackModel = mesh;
       setupModel(mesh);
     };
@@ -144,7 +150,7 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
     const mouse = new THREE.Vector2();
 
     const onClick = (event: MouseEvent) => {
-        if (!currentModel || mountRef.current?.querySelector(':hover')?.closest('aside, header, [role="dialog"], [role="alert"], #coords-panel, #ai-panel')) {
+        if (!currentModel || mountRef.current?.querySelector(':hover')?.closest('aside, header, [role="dialog"], [role="alert"], #coords-panel')) {
             return;
         }
 
