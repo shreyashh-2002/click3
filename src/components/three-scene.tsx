@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 type ThreeSceneProps = {
   onCoordChange: (coords: THREE.Vector3 | null) => void;
+  modelUrl: string | null;
 };
 
-export default function ThreeScene({ onCoordChange }: ThreeSceneProps) {
+export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps) {
   const mountRef = useRef<HTMLDivElement>(null);
+  const [model, setModel] = useState<THREE.Object3D | null>(null);
 
   useEffect(() => {
     const currentMount = mountRef.current;
@@ -38,25 +41,62 @@ export default function ThreeScene({ onCoordChange }: ThreeSceneProps) {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.minDistance = 2;
-    controls.maxDistance = 10;
-
-    // Model
-    const geometry = new THREE.TorusKnotGeometry(1.5, 0.4, 128, 16);
-    const material = new THREE.MeshStandardMaterial({
-      color: 0x3f51b5, // Primary color
-      roughness: 0.4,
-      metalness: 0.6,
-    });
-    const model = new THREE.Mesh(geometry, material);
-    scene.add(model);
+    controls.maxDistance = 20;
 
     // Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
     scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
     directionalLight.position.set(5, 10, 7.5);
     scene.add(directionalLight);
+
+    let currentModel: THREE.Object3D | null = null;
+    let fallbackModel: THREE.Mesh | null = null;
+
+    const createFallbackModel = () => {
+      const geometry = new THREE.TorusKnotGeometry(1, 0.3, 128, 16);
+      const material = new THREE.MeshStandardMaterial({
+        color: 0x3f51b5,
+        roughness: 0.4,
+        metalness: 0.6,
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      scene.add(mesh);
+      currentModel = mesh;
+      fallbackModel = mesh;
+      setModel(mesh);
+    };
+
+    if (modelUrl) {
+        const loader = new GLTFLoader();
+        loader.load(modelUrl, (gltf) => {
+            if (currentModel) {
+                scene.remove(currentModel);
+            }
+            const loadedModel = gltf.scene;
+            
+            // Center and scale model
+            const box = new THREE.Box3().setFromObject(loadedModel);
+            const center = box.getCenter(new THREE.Vector3());
+            loadedModel.position.sub(center);
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const scale = 3 / maxDim;
+            loadedModel.scale.set(scale, scale, scale);
+
+            scene.add(loadedModel);
+            currentModel = loadedModel;
+            setModel(loadedModel);
+            onCoordChange(null);
+        }, undefined, (error) => {
+            console.error('An error happened while loading the model:', error);
+            if (!fallbackModel) createFallbackModel();
+        });
+    } else {
+      if (!fallbackModel) createFallbackModel();
+    }
+
 
     // Raycaster for click detection
     const raycaster = new THREE.Raycaster();
@@ -64,33 +104,35 @@ export default function ThreeScene({ onCoordChange }: ThreeSceneProps) {
     let intersectionMarker: THREE.Mesh | null = null;
 
     const onClick = (event: MouseEvent) => {
-      const rect = currentMount.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        if (!currentModel) return;
 
-      raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObject(model);
+        const rect = currentMount.getBoundingClientRect();
+        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-      if (intersects.length > 0) {
-        const point = intersects[0].point;
-        onCoordChange(point);
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObject(currentModel, true);
 
-        // Visual feedback
-        if (intersectionMarker) {
-          scene.remove(intersectionMarker);
+        if (intersects.length > 0) {
+            const point = intersects[0].point;
+            onCoordChange(point);
+
+            // Visual feedback
+            if (intersectionMarker) {
+            scene.remove(intersectionMarker);
+            }
+            const markerGeometry = new THREE.SphereGeometry(0.05, 16, 16);
+            const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x7e57c2 }); // Accent color
+            intersectionMarker = new THREE.Mesh(markerGeometry, markerMaterial);
+            intersectionMarker.position.copy(point);
+            scene.add(intersectionMarker);
+        } else {
+            onCoordChange(null);
+            if (intersectionMarker) {
+            scene.remove(intersectionMarker);
+            intersectionMarker = null;
+            }
         }
-        const markerGeometry = new THREE.SphereGeometry(0.05, 16, 16);
-        const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x7e57c2 }); // Accent color
-        intersectionMarker = new THREE.Mesh(markerGeometry, markerMaterial);
-        intersectionMarker.position.copy(point);
-        scene.add(intersectionMarker);
-      } else {
-        onCoordChange(null);
-        if (intersectionMarker) {
-          scene.remove(intersectionMarker);
-          intersectionMarker = null;
-        }
-      }
     };
 
     currentMount.addEventListener('click', onClick);
@@ -99,8 +141,10 @@ export default function ThreeScene({ onCoordChange }: ThreeSceneProps) {
     let animationFrameId: number;
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
-      model.rotation.x += 0.001;
-      model.rotation.y += 0.002;
+      if (currentModel === fallbackModel) { // only rotate the default model
+        currentModel.rotation.x += 0.001;
+        currentModel.rotation.y += 0.002;
+      }
       controls.update();
       renderer.render(scene, camera);
     };
@@ -122,9 +166,21 @@ export default function ThreeScene({ onCoordChange }: ThreeSceneProps) {
       if (currentMount && renderer.domElement) {
         currentMount.removeChild(renderer.domElement);
       }
-      // Dispose Three.js objects
-      geometry.dispose();
-      material.dispose();
+      
+      if(currentModel) {
+        scene.remove(currentModel);
+        currentModel.traverse((object) => {
+            if (object instanceof THREE.Mesh) {
+                object.geometry.dispose();
+                if(Array.isArray(object.material)){
+                    object.material.forEach(m => m.dispose());
+                } else {
+                    object.material.dispose();
+                }
+            }
+        });
+      }
+
       if (intersectionMarker) {
         intersectionMarker.geometry.dispose();
         if (Array.isArray(intersectionMarker.material)) {
@@ -136,7 +192,7 @@ export default function ThreeScene({ onCoordChange }: ThreeSceneProps) {
       controls.dispose();
       renderer.dispose();
     };
-  }, [onCoordChange]);
+  }, [onCoordChange, modelUrl]);
 
   return <div ref={mountRef} className="w-full h-full" />;
 }

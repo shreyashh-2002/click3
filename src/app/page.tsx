@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Info, HelpCircle } from 'lucide-react';
+import { Info, HelpCircle, Upload } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
 import { explainCoordinates } from '@/ai/flows/coordinate-explanation';
 import { getSuggestedActions } from '@/ai/flows/suggested-actions';
@@ -15,9 +15,26 @@ export default function Home() {
   const [explanation, setExplanation] = useState<string | null>(null);
   const [actions, setActions] = useState<string[] | null>(null);
   const [isLoadingAI, setIsLoadingAI] = useState(false);
+  const [modelUrl, setModelUrl] = useState<string | null>(null);
+  const [modelDescription, setModelDescription] = useState<string>("A torus knot model.");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleCoordChange = (newCoords: THREE.Vector3 | null) => {
     setCoords(newCoords);
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setModelUrl(url);
+      setModelDescription(`A user-uploaded model named ${file.name}.`);
+      setCoords(null);
+    }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
   };
   
   useEffect(() => {
@@ -29,7 +46,7 @@ export default function Home() {
 
         try {
           const [explanationResult, actionsResult] = await Promise.all([
-            explainCoordinates({ x: coords.x, y: coords.y, z: coords.z, modelDescription: "A torus knot model." }),
+            explainCoordinates({ x: coords.x, y: coords.y, z: coords.z, modelDescription }),
             getSuggestedActions({ x: coords.x, y: coords.y, z: coords.z })
           ]);
           setExplanation(explanationResult.explanation);
@@ -47,16 +64,29 @@ export default function Home() {
       setExplanation(null);
       setActions(null);
     }
-  }, [coords]);
+  }, [coords, modelDescription]);
 
   return (
     <main className="flex h-screen w-screen flex-col lg:flex-row bg-background text-foreground overflow-hidden">
       <div className="flex-grow h-1/2 lg:h-full lg:w-3/4 relative">
-        <header className="absolute top-0 left-0 p-6 z-10">
-          <h1 className="text-3xl font-bold font-headline text-primary">Click Tracer</h1>
-          <p className="text-lg text-muted-foreground">Click on the model to get coordinates</p>
+        <header className="absolute top-0 left-0 p-6 z-10 w-full flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-bold font-headline text-primary">Click Tracer</h1>
+            <p className="text-lg text-muted-foreground">Click on the model to get coordinates</p>
+          </div>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            className="hidden"
+            accept=".gltf,.glb"
+          />
+          <Button onClick={handleUploadClick}>
+            <Upload className="mr-2 h-4 w-4" />
+            Upload Model
+          </Button>
         </header>
-        <ThreeScene onCoordChange={handleCoordChange} />
+        <ThreeScene onCoordChange={handleCoordChange} modelUrl={modelUrl} />
       </div>
       <aside className="h-1/2 lg:h-full lg:w-1/4 p-4 lg:p-6 border-t lg:border-t-0 lg:border-l border-border">
         <Card className="h-full w-full flex flex-col bg-card shadow-lg">
