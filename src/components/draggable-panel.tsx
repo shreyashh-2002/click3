@@ -1,8 +1,9 @@
+
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Grab } from 'lucide-react';
+import { GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type DraggablePanelProps = {
@@ -23,30 +24,40 @@ export default function DraggablePanel({ id, title, icon, description, children,
 
   const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!panelRef.current) return;
-    // Prevent dragging when interacting with form elements
-    if (
-      e.target instanceof HTMLInputElement ||
-      e.target instanceof HTMLButtonElement ||
-      e.target instanceof HTMLTextAreaElement ||
-      e.target.closest('textarea')
-    ) {
+    
+    const target = e.target as HTMLElement;
+    // Allow dragging only from the header, identified by the cursor-grab class
+    if (!target.closest('.cursor-grab')) {
       return;
     }
+    
     const rect = panelRef.current.getBoundingClientRect();
     setIsDragging(true);
     dragOffset.current = {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
     };
+    // Prevent text selection while dragging
     e.preventDefault();
   };
 
   const onMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging) return;
-    setPosition({
-      x: e.clientX - dragOffset.current.x,
-      y: e.clientY - dragOffset.current.y,
-    });
+    if (!isDragging || !panelRef.current) return;
+    
+    const parent = panelRef.current.parentElement;
+    if (!parent) return;
+
+    const parentRect = parent.getBoundingClientRect();
+    const panelRect = panelRef.current.getBoundingClientRect();
+
+    let newX = e.clientX - dragOffset.current.x;
+    let newY = e.clientY - dragOffset.current.y;
+    
+    // Constrain movement within the parent element
+    newX = Math.max(0, Math.min(newX, parentRect.width - panelRect.width));
+    newY = Math.max(0, Math.min(newY, parentRect.height - panelRect.height));
+
+    setPosition({ x: newX, y: newY });
   }, [isDragging]);
 
   const onMouseUp = useCallback(() => {
@@ -62,29 +73,37 @@ export default function DraggablePanel({ id, title, icon, description, children,
     };
   }, [onMouseMove, onMouseUp]);
   
-  // Ensure the panel repositions if the initial position changes (e.g. on window resize)
+  // Update position if initialPosition changes (e.g., on window resize)
   useEffect(() => {
     setPosition(initialPosition);
-  }, [initialPosition]);
+  }, [initialPosition.x, initialPosition.y]);
 
   return (
     <div
       ref={panelRef}
       id={id}
-      style={{ top: `${position.y}px`, left: `${position.x}px` }}
-      className={cn('absolute z-20 w-96', className)}
+      style={{ 
+        top: `${position.y}px`, 
+        left: `${position.x}px`,
+        position: 'absolute'
+      }}
+      className={cn('z-20', className)}
     >
       <Card className="bg-background/80 backdrop-blur-sm border-border/50 shadow-2xl">
-        <CardHeader onMouseDown={onMouseDown} className="cursor-grab active:cursor-grabbing">
-          <CardTitle className="flex items-center gap-2">
+        <CardHeader className="cursor-grab active:cursor-grabbing p-4" onMouseDown={onMouseDown}>
+          <div className="flex items-center gap-2">
             {icon}
-            {title}
-            <Grab className="w-4 h-4 ml-auto text-muted-foreground" />
-          </CardTitle>
-          <CardDescription>{description}</CardDescription>
+            <div className="flex-1">
+              <CardTitle className="text-lg">{title}</CardTitle>
+              <CardDescription>{description}</CardDescription>
+            </div>
+            <GripVertical className="w-5 h-5 text-muted-foreground" />
+          </div>
         </CardHeader>
-        <CardContent>{children}</CardContent>
+        <CardContent className="p-4 pt-0">{children}</CardContent>
       </Card>
     </div>
   );
 };
+
+    

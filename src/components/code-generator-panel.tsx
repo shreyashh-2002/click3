@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -34,7 +35,13 @@ export default function CodeGeneratorPanel({ anchor, initialPosition }: CodeGene
         const y = anchor.y.toFixed(4);
         const z = anchor.z.toFixed(4);
 
-        const code = `{\n  id: "${id}",\n  label: "${label}",\n  capacity: "${capacity}",\n  anchor: new THREE.Vector3(${x}, ${y}, ${z}),\n  height: ${height},\n}`;
+        const code = `{
+  id: "${id}",
+  label: "${label}",
+  capacity: "${capacity}",
+  anchor: new THREE.Vector3(${x}, ${y}, ${z}),
+  height: ${height},
+}`;
         setGeneratedCode(code);
 
     }, [id, label, capacity, height, anchor]);
@@ -56,6 +63,7 @@ export default function CodeGeneratorPanel({ anchor, initialPosition }: CodeGene
             icon={<Code className="h-5 w-5 text-primary" />}
             description="Create a code snippet from the selected point."
             initialPosition={initialPosition}
+            className="w-96"
         >
             <div className="space-y-4">
                 <div className="space-y-2">
@@ -81,7 +89,7 @@ export default function CodeGeneratorPanel({ anchor, initialPosition }: CodeGene
                         <Textarea
                             readOnly
                             value={anchor ? generatedCode : "Click on the model to select an anchor point."}
-                            className="font-mono text-xs h-36 resize-none"
+                            className="font-mono text-xs h-40 resize-none bg-muted"
                             placeholder="Generated code will appear here..."
                         />
                         {generatedCode && (
@@ -95,3 +103,5 @@ export default function CodeGeneratorPanel({ anchor, initialPosition }: CodeGene
         </DraggablePanel>
     );
 }
+
+    

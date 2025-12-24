@@ -1,13 +1,13 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import * as THREE from 'three';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Target, Copy } from 'lucide-react';
+import { Target } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 
 type CalibrationPanelProps = {
@@ -23,20 +23,29 @@ type CalibrationPanelProps = {
 };
 
 const VectorInput = ({ label, value, onChange }: { label: string, value: THREE.Vector3, onChange: (newValue: THREE.Vector3) => void }) => {
+    
+    const [tempVec, setTempVec] = useState(value.clone());
+
     const handleChange = (axis: 'x' | 'y' | 'z', val: string) => {
-        const num = parseFloat(val);
-        if (!isNaN(num)) {
-            onChange(value.clone().setComponent(axis === 'x' ? 0 : axis === 'y' ? 1 : 2, num));
-        }
+        const newVec = tempVec.clone();
+        newVec[axis] = parseFloat(val) || 0;
+        setTempVec(newVec);
     };
 
+    const handleBlur = (axis: 'x' | 'y' | 'z', val: string) => {
+        const num = parseFloat(val);
+        if (!isNaN(num)) {
+            onChange(tempVec.clone());
+        }
+    };
+    
     return (
         <div className="space-y-2">
             <Label>{label}</Label>
             <div className="flex gap-2">
-                <Input type="number" value={value.x} onChange={e => handleChange('x', e.target.value)} placeholder="X" aria-label={`${label} X`} />
-                <Input type="number" value={value.y} onChange={e => handleChange('y', e.target.value)} placeholder="Y" aria-label={`${label} Y`} />
-                <Input type="number" value={value.z} onChange={e => handleChange('z', e.target.value)} placeholder="Z" aria-label={`${label} Z`} />
+                <Input type="number" value={tempVec.x} onChange={e => handleChange('x', e.target.value)} onBlur={e => handleBlur('x', e.target.value)} placeholder="X" aria-label={`${label} X`} step="0.1" />
+                <Input type="number" value={tempVec.y} onChange={e => handleChange('y', e.target.value)} onBlur={e => handleBlur('y', e.target.value)} placeholder="Y" aria-label={`${label} Y`} step="0.1" />
+                <Input type="number" value={tempVec.z} onChange={e => handleChange('z', e.target.value)} onBlur={e => handleBlur('z', e.target.value)} placeholder="Z" aria-label={`${label} Z`} step="0.1" />
             </div>
         </div>
     );
@@ -47,7 +56,7 @@ export default function CalibrationPanel({ calibration, setCalibration, lastScen
 
     const handleUseLastClick = (pointNumber: 1 | 2) => {
         if (lastSceneClick) {
-            setCalibration((prev: any) => ({ ...prev, [`scene${pointNumber}`]: lastSceneClick }));
+            setCalibration((prev: any) => ({ ...prev, [`scene${pointNumber}`]: lastSceneClick.clone() }));
             toast({
                 title: `Point ${pointNumber} Set`,
                 description: "Used the last clicked position as the scene point.",
@@ -76,13 +85,14 @@ export default function CalibrationPanel({ calibration, setCalibration, lastScen
         >
             <div className="space-y-6">
                 {/* Point 1 */}
-                <div className="p-3 border rounded-lg space-y-3">
+                <div className="p-3 border rounded-lg space-y-3 bg-background/50">
                     <div className="flex justify-between items-center">
                         <h3 className="font-semibold text-md">Reference Point 1</h3>
                         <Button size="sm" variant="outline" onClick={() => handleUseLastClick(1)}>Use Last Click</Button>
                     </div>
                     <div className="p-2 bg-muted rounded-md font-mono text-xs">
-                        Scene: {calibration.scene1 ? `${calibration.scene1.x.toFixed(4)}, ${calibration.scene1.y.toFixed(4)}, ${calibration.scene1.z.toFixed(4)}` : 'Not Set'}
+                        <span className='font-sans text-muted-foreground'>Scene: </span>
+                        {calibration.scene1 ? `${calibration.scene1.x.toFixed(4)}, ${calibration.scene1.y.toFixed(4)}, ${calibration.scene1.z.toFixed(4)}` : 'Not Set'}
                     </div>
                     <VectorInput 
                         label="Target Point 1" 
@@ -92,13 +102,14 @@ export default function CalibrationPanel({ calibration, setCalibration, lastScen
                 </div>
 
                 {/* Point 2 */}
-                <div className="p-3 border rounded-lg space-y-3">
+                <div className="p-3 border rounded-lg space-y-3 bg-background/50">
                      <div className="flex justify-between items-center">
                         <h3 className="font-semibold text-md">Reference Point 2</h3>
                         <Button size="sm" variant="outline" onClick={() => handleUseLastClick(2)}>Use Last Click</Button>
                     </div>
                     <div className="p-2 bg-muted rounded-md font-mono text-xs">
-                        Scene: {calibration.scene2 ? `${calibration.scene2.x.toFixed(4)}, ${calibration.scene2.y.toFixed(4)}, ${calibration.scene2.z.toFixed(4)}` : 'Not Set'}
+                        <span className='font-sans text-muted-foreground'>Scene: </span>
+                        {calibration.scene2 ? `${calibration.scene2.x.toFixed(4)}, ${calibration.scene2.y.toFixed(4)}, ${calibration.scene2.z.toFixed(4)}` : 'Not Set'}
                     </div>
                     <VectorInput 
                         label="Target Point 2" 
@@ -110,3 +121,5 @@ export default function CalibrationPanel({ calibration, setCalibration, lastScen
         </DraggablePanel>
     );
 }
+
+    
