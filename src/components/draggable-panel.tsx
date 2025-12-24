@@ -21,6 +21,16 @@ export default function DraggablePanel({ id, title, icon, description, children,
   const [isDragging, setIsDragging] = useState(false);
   const dragOffset = useRef({ x: 0, y: 0 });
   const panelRef = useRef<HTMLDivElement>(null);
+  const [windowSize, setWindowSize] = useState({width: 0, height: 0});
+
+  useEffect(() => {
+    const handleResize = () => {
+        setWindowSize({width: window.innerWidth, height: window.innerHeight});
+    }
+    window.addEventListener('resize', handleResize);
+    handleResize();
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!panelRef.current) return;
@@ -76,7 +86,7 @@ export default function DraggablePanel({ id, title, icon, description, children,
   // Update position if initialPosition changes (e.g., on window resize)
   useEffect(() => {
     setPosition(initialPosition);
-  }, [initialPosition.x, initialPosition.y]);
+  }, [initialPosition]);
 
   return (
     <div
@@ -105,5 +115,3 @@ export default function DraggablePanel({ id, title, icon, description, children,
     </div>
   );
 };
-
-    

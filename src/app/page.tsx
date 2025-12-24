@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Info, Upload, Code } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
 import CodeGeneratorPanel from '@/components/code-generator-panel';
-import DraggablePanel from '@/components/draggable-panel';
 
 export default function Home() {
   const [sceneClick, setSceneClick] = useState<THREE.Vector3 | null>(null);
@@ -16,16 +15,8 @@ export default function Home() {
   const [isClient, setIsClient] = useState(false);
   const [showGenerator, setShowGenerator] = useState(false);
   
-  const [windowSize, setWindowSize] = useState({width: 0, height: 0});
-
   useEffect(() => {
     setIsClient(true);
-    const handleResize = () => {
-        setWindowSize({width: window.innerWidth, height: window.innerHeight});
-    }
-    window.addEventListener('resize', handleResize);
-    handleResize();
-    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleCoordChange = useCallback((newCoords: THREE.Vector3 | null) => {
@@ -87,28 +78,13 @@ export default function Home() {
         />
       )}
 
-      <DraggablePanel
-        id="coords-panel"
-        title="Scene Coordinates"
-        icon={<Info className="h-5 w-5 text-primary" />}
-        description={sceneClick ? "Information about the selected point." : "Click on the model to see details."}
-        initialPosition={{ x: windowSize.width - 450, y: windowSize.height - 200 }}
-        className="w-96"
-      >
-        <div className="space-y-4">
-            <div>
-              {sceneClick ? (
-                <div className="p-3 bg-muted rounded-lg font-mono text-xs space-y-1">
-                  <p><span className="font-bold text-primary">X:</span> {sceneClick.x.toFixed(4)}</p>
-                  <p><span className="font-bold text-primary">Y:</span> {sceneClick.y.toFixed(4)}</p>
-                  <p><span className="font-bold text-primary">Z:</span> {sceneClick.z.toFixed(4)}</p>
-                </div>
-              ) : (
-                <p className="text-muted-foreground italic text-sm text-center py-4">No point selected.</p>
-              )}
-            </div>
+      {sceneClick && (
+        <div className="absolute bottom-4 right-4 z-20 p-3 bg-background/80 rounded-lg backdrop-blur-sm border border-border/50 font-mono text-xs space-y-1 w-48">
+          <p><span className="font-bold text-primary">X:</span> {sceneClick.x.toFixed(4)}</p>
+          <p><span className="font-bold text-primary">Y:</span> {sceneClick.y.toFixed(4)}</p>
+          <p><span className="font-bold text-primary">Z:</span> {sceneClick.z.toFixed(4)}</p>
         </div>
-      </DraggablePanel>
+      )}
     </main>
   );
 }
