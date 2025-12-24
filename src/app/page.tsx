@@ -45,22 +45,26 @@ export default function Home() {
           return sceneCoords;
       }
 
-      // Linear interpolation/extrapolation for each axis independently.
-      // Formula: target = t1 + (s - s1) * (t2 - t1) / (s2 - s1)
-      const s1 = calibration.scene1;
-      const t1 = calibration.target1;
-      const s2 = calibration.scene2;
-      const t2 = calibration.target2;
-      const s = sceneCoords;
+      // This is a more robust linear interpolation/extrapolation for each axis.
+      // The formula is: y = y1 + (x - x1) * (y2 - y1) / (x2 - x1)
+      // Where 'x' is the input scene coordinate and 'y' is the output target coordinate.
+      const s1 = calibration.scene1; // (x1, y1, z1) for the scene
+      const t1 = calibration.target1; // (x1, y1, z1) for the target
+      const s2 = calibration.scene2; // (x2, y2, z2) for the scene
+      const t2 = calibration.target2; // (x2, y2, z2) for the target
+      const s = sceneCoords; // The input scene coordinate (x, y, z)
       
       const target = new THREE.Vector3();
 
       const calculate = (s_val: number, s1_val: number, s2_val: number, t1_val: number, t2_val: number) => {
         const sceneDelta = s2_val - s1_val;
-        if (sceneDelta === 0) {
-            return t1_val; // Avoid division by zero; assume simple offset.
+        // Avoid division by zero. If the scene points have the same value on an axis, 
+        // we can't determine a scale, so we assume a simple offset from the first point.
+        if (Math.abs(sceneDelta) < 1e-6) {
+            return t1_val + (s_val - s1_val);
         }
-        return t1_val + (s_val - s1_val) * (t2_val - t1_val) / sceneDelta;
+        const scale = (t2_val - t1_val) / sceneDelta;
+        return t1_val + (s_val - s1_val) * scale;
       }
 
       target.x = calculate(s.x, s1.x, s2.x, t1.x, t2.x);
@@ -87,6 +91,7 @@ export default function Home() {
       setModelUrl(url);
       setCoords(null);
       setSceneClick(null);
+      // Reset calibration to default when a new model is loaded
       setCalibration({ 
         scene1: new THREE.Vector3(15.6768, 3.9051, -5.2787),
         target1: new THREE.Vector3(8, 3, -4),
