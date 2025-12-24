@@ -4,84 +4,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Info, Upload, Orbit, Grab, Target, Code } from 'lucide-react';
+import { Info, Upload, Orbit, Target, Code } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
 import CalibrationPanel from '@/components/calibration-panel';
 import CodeGeneratorPanel from '@/components/code-generator-panel';
-
-type DraggablePanelProps = {
-  id: string;
-  title: string;
-  icon: React.ReactNode;
-  description: string;
-  children: React.ReactNode;
-  initialPosition: { x: number; y: number };
-  className?: string;
-};
-
-const DraggablePanel = ({ id, title, icon, description, children, initialPosition, className }: DraggablePanelProps) => {
-  const [position, setPosition] = useState(initialPosition);
-  const [isDragging, setIsDragging] = useState(false);
-  const dragOffset = useRef({ x: 0, y: 0 });
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!panelRef.current) return;
-    // Prevent dragging when interacting with form elements
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement || e.target.closest('textarea')) {
-      return;
-    }
-    const rect = panelRef.current.getBoundingClientRect();
-    setIsDragging(true);
-    dragOffset.current = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    };
-    e.preventDefault();
-  };
-
-  const onMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging) return;
-    setPosition({
-      x: e.clientX - dragOffset.current.x,
-      y: e.clientY - dragOffset.current.y,
-    });
-  }, [isDragging]);
-
-  const onMouseUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-  }, [onMouseMove, onMouseUp]);
-
-  return (
-    <div
-      ref={panelRef}
-      id={id}
-      style={{ top: `${position.y}px`, left: `${position.x}px` }}
-      className={`absolute z-20 w-80 ${className}`}
-    >
-      <Card className="bg-background/80 backdrop-blur-sm border-border/50 shadow-2xl">
-        <CardHeader onMouseDown={onMouseDown} className="cursor-grab active:cursor-grabbing">
-          <CardTitle className="flex items-center gap-2">
-            {icon}
-            {title}
-            <Grab className="w-4 h-4 ml-auto text-muted-foreground" />
-          </CardTitle>
-          <CardDescription>{description}</CardDescription>
-        </CardHeader>
-        <CardContent>{children}</CardContent>
-      </Card>
-    </div>
-  );
-};
+import DraggablePanel from '@/components/draggable-panel';
 
 
 export default function Home() {
@@ -103,9 +30,17 @@ export default function Home() {
   });
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [showGenerator, setShowGenerator] = useState(false);
+  
+  const [windowSize, setWindowSize] = useState({width: 0, height: 0});
 
   useEffect(() => {
     setIsClient(true);
+    const handleResize = () => {
+        setWindowSize({width: window.innerWidth, height: window.innerHeight});
+    }
+    window.addEventListener('resize', handleResize);
+    handleResize();
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const mapCoordinates = useCallback((sceneCoords: THREE.Vector3): THREE.Vector3 => {
@@ -188,22 +123,22 @@ export default function Home() {
     <main className="h-screen w-screen overflow-hidden bg-background text-foreground">
       <ThreeScene onCoordChange={handleCoordChange} modelUrl={modelUrl} />
 
-      <header className="absolute top-0 left-0 p-4 z-10 w-full flex justify-between items-center">
-        <div className="flex items-center gap-3">
+      <header className="absolute top-0 left-0 p-4 z-10 w-full flex justify-between items-start">
+        <div className="flex items-center gap-3 bg-background/80 p-3 rounded-lg backdrop-blur-sm border border-border/50">
             <Orbit className="w-8 h-8 text-primary" />
             <div>
                 <h1 className="text-2xl font-bold font-headline">Click Tracer</h1>
                 <p className="text-sm text-muted-foreground">Click on the model to get coordinates</p>
             </div>
         </div>
-        <div className="flex items-center gap-2">
-            <Button onClick={() => setShowGenerator(c => !c)} variant={showGenerator ? "secondary" : "outline"}>
+        <div className="flex items-center gap-2 p-2 bg-background/80 rounded-lg backdrop-blur-sm border border-border/50">
+            <Button onClick={() => setShowGenerator(c => !c)} variant={showGenerator ? "secondary" : "outline"} size="sm">
                 <Code className="mr-2 h-4 w-4" />
-                {showGenerator ? "Hide Generator" : "Show Generator"}
+                Generator
             </Button>
-            <Button onClick={() => setIsCalibrating(c => !c)} variant={isCalibrating ? "secondary" : "outline"}>
+            <Button onClick={() => setIsCalibrating(c => !c)} variant={isCalibrating ? "secondary" : "outline"} size="sm">
                 <Target className="mr-2 h-4 w-4" />
-                {isCalibrating ? "Finish Calibration" : "Calibrate"}
+                Calibrate
             </Button>
             <input
               type="file"
@@ -212,7 +147,7 @@ export default function Home() {
               className="hidden"
               accept=".gltf,.glb"
             />
-            <Button onClick={handleUploadClick}>
+            <Button onClick={handleUploadClick} size="sm">
               <Upload className="mr-2 h-4 w-4" />
               Upload Model
             </Button>
@@ -223,7 +158,7 @@ export default function Home() {
         <CalibrationPanel
           sceneClick={sceneClick}
           onCalibrationChange={setCalibration}
-          initialPosition={{ x: 30, y: 150 }}
+          initialPosition={{ x: 30, y: 120 }}
           calibration={calibration}
         />
       )}
@@ -231,7 +166,7 @@ export default function Home() {
       {showGenerator && (
         <CodeGeneratorPanel
           anchor={coords}
-          initialPosition={{ x: 30, y: isCalibrating ? 550 : 150 }}
+          initialPosition={{ x: 30, y: isCalibrating ? 530 : 120 }}
         />
       )}
 
@@ -240,7 +175,8 @@ export default function Home() {
         title="Coordinate Data"
         icon={<Info className="h-5 w-5 text-primary" />}
         description={coords ? "Information about the selected point." : "Click on the model to see details."}
-        initialPosition={{ x: isClient ? window.innerWidth - 350 : 0, y: 30 }}
+        initialPosition={{ x: windowSize.width - 410, y: 30 }}
+        className="w-80"
       >
         <div className="space-y-4">
           <h3 className="font-semibold text-md">Mapped Coordinates</h3>

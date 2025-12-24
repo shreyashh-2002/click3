@@ -1,87 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import * as THREE from 'three';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Grab, Code, Copy } from 'lucide-react';
-
-type DraggablePanelProps = {
-  id: string;
-  title: string;
-  icon: React.ReactNode;
-  description: string;
-  children: React.ReactNode;
-  initialPosition: { x: number; y: number };
-  className?: string;
-};
-
-const DraggablePanel = ({ id, title, icon, description, children, initialPosition, className }: DraggablePanelProps) => {
-  const [position, setPosition] = useState(initialPosition);
-  const [isDragging, setIsDragging] = useState(false);
-  const dragOffset = useRef({ x: 0, y: 0 });
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!panelRef.current) return;
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement || e.target instanceof HTMLTextAreaElement) {
-      return;
-    }
-    const rect = panelRef.current.getBoundingClientRect();
-    setIsDragging(true);
-    dragOffset.current = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    };
-    e.preventDefault();
-  };
-
-  const onMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging) return;
-    setPosition({
-      x: e.clientX - dragOffset.current.x,
-      y: e.clientY - dragOffset.current.y,
-    });
-  }, [isDragging]);
-
-  const onMouseUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-  }, [onMouseMove, onMouseUp]);
-
-  return (
-    <div
-      ref={panelRef}
-      id={id}
-      style={{ top: `${position.y}px`, left: `${position.x}px` }}
-      className={`absolute z-20 w-96 ${className}`}
-    >
-      <Card className="bg-background/80 backdrop-blur-sm border-border/50 shadow-2xl">
-        <CardHeader onMouseDown={onMouseDown} className="cursor-grab active:cursor-grabbing">
-          <CardTitle className="flex items-center gap-2">
-            {icon}
-            {title}
-            <Grab className="w-4 h-4 ml-auto text-muted-foreground" />
-          </CardTitle>
-          <CardDescription>{description}</CardDescription>
-        </CardHeader>
-        <CardContent>{children}</CardContent>
-      </Card>
-    </div>
-  );
-};
+import { Code, Copy } from 'lucide-react';
+import DraggablePanel from './draggable-panel';
 
 
 type CodeGeneratorPanelProps = {
