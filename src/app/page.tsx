@@ -94,7 +94,12 @@ export default function Home() {
     target1: THREE.Vector3 | null,
     scene2: THREE.Vector3 | null,
     target2: THREE.Vector3 | null,
-  }>({ scene1: null, target1: null, scene2: null, target2: null });
+  }>({ 
+    scene1: new THREE.Vector3(15.6768, 3.9051, -5.2787),
+    target1: new THREE.Vector3(8, 3, -4),
+    scene2: new THREE.Vector3(18.8391, 2.2537, -8.1187),
+    target2: new THREE.Vector3(12, 3, -6)
+  });
   const [isCalibrating, setIsCalibrating] = useState(false);
 
   useEffect(() => {
@@ -194,6 +199,7 @@ export default function Home() {
           sceneClick={sceneClick}
           onCalibrationChange={setCalibration}
           initialPosition={{ x: 30, y: 100 }}
+          calibration={calibration}
         />
       )}
 
@@ -202,7 +208,7 @@ export default function Home() {
         title="Coordinate Data"
         icon={<Info className="h-5 w-5 text-primary" />}
         description={coords ? "Information about the selected point." : "Click on the model to see details."}
-        initialPosition={{ x: window.innerWidth - 350, y: 30 }}
+        initialPosition={{ x: isClient ? window.innerWidth - 350 : 0, y: 30 }}
       >
         <div className="space-y-4">
           <h3 className="font-semibold text-md">Mapped Coordinates</h3>

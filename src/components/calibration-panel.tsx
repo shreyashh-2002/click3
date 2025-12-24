@@ -82,16 +82,18 @@ const DraggablePanel = ({ id, title, icon, description, children, initialPositio
   );
 };
 
-
-type CalibrationPanelProps = {
-  sceneClick: THREE.Vector3 | null;
-  onCalibrationChange: (cal: {
+type Calibration = {
     scene1: THREE.Vector3 | null;
     target1: THREE.Vector3 | null;
     scene2: THREE.Vector3 | null;
     target2: THREE.Vector3 | null;
-  }) => void;
+};
+
+type CalibrationPanelProps = {
+  sceneClick: THREE.Vector3 | null;
+  onCalibrationChange: (cal: Calibration) => void;
   initialPosition: { x: number, y: number };
+  calibration: Calibration;
 };
 
 const CalibrationPoint = ({
@@ -120,6 +122,10 @@ const CalibrationPoint = ({
             setTargetX(targetPoint.x.toString());
             setTargetY(targetPoint.y.toString());
             setTargetZ(targetPoint.z.toString());
+        } else {
+            setTargetX("");
+            setTargetY("");
+            setTargetZ("");
         }
     }, [targetPoint]);
 
@@ -168,13 +174,12 @@ const CalibrationPoint = ({
 };
 
 
-export default function CalibrationPanel({ sceneClick, onCalibrationChange, initialPosition }: CalibrationPanelProps) {
-    const [cal, setCal] = useState({
-        scene1: null as THREE.Vector3 | null,
-        target1: null as THREE.Vector3 | null,
-        scene2: null as THREE.Vector3 | null,
-        target2: null as THREE.Vector3 | null,
-    });
+export default function CalibrationPanel({ sceneClick, onCalibrationChange, initialPosition, calibration }: CalibrationPanelProps) {
+    const [cal, setCal] = useState<Calibration>(calibration);
+
+    useEffect(() => {
+        setCal(calibration);
+    }, [calibration]);
 
     useEffect(() => {
         onCalibrationChange(cal);
