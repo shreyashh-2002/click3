@@ -4,9 +4,10 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Info, Upload, Orbit, Grab, Target } from 'lucide-react';
+import { Info, Upload, Orbit, Grab, Target, Code } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
 import CalibrationPanel from '@/components/calibration-panel';
+import CodeGeneratorPanel from '@/components/code-generator-panel';
 
 type DraggablePanelProps = {
   id: string;
@@ -27,7 +28,7 @@ const DraggablePanel = ({ id, title, icon, description, children, initialPositio
   const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!panelRef.current) return;
     // Prevent dragging when interacting with form elements
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement) {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement || e.target.closest('textarea')) {
       return;
     }
     const rect = panelRef.current.getBoundingClientRect();
@@ -101,6 +102,7 @@ export default function Home() {
     target2: new THREE.Vector3(12, 3, -6)
   });
   const [isCalibrating, setIsCalibrating] = useState(false);
+  const [showGenerator, setShowGenerator] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
@@ -195,6 +197,10 @@ export default function Home() {
             </div>
         </div>
         <div className="flex items-center gap-2">
+            <Button onClick={() => setShowGenerator(c => !c)} variant={showGenerator ? "secondary" : "outline"}>
+                <Code className="mr-2 h-4 w-4" />
+                {showGenerator ? "Hide Generator" : "Show Generator"}
+            </Button>
             <Button onClick={() => setIsCalibrating(c => !c)} variant={isCalibrating ? "secondary" : "outline"}>
                 <Target className="mr-2 h-4 w-4" />
                 {isCalibrating ? "Finish Calibration" : "Calibrate"}
@@ -217,8 +223,15 @@ export default function Home() {
         <CalibrationPanel
           sceneClick={sceneClick}
           onCalibrationChange={setCalibration}
-          initialPosition={{ x: 30, y: 100 }}
+          initialPosition={{ x: 30, y: 150 }}
           calibration={calibration}
+        />
+      )}
+      
+      {showGenerator && (
+        <CodeGeneratorPanel
+          anchor={coords}
+          initialPosition={{ x: 30, y: isCalibrating ? 550 : 150 }}
         />
       )}
 

@@ -1,0 +1,170 @@
+"use client";
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import * as THREE from 'three';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
+import { Grab, Code, Copy } from 'lucide-react';
+
+type DraggablePanelProps = {
+  id: string;
+  title: string;
+  icon: React.ReactNode;
+  description: string;
+  children: React.ReactNode;
+  initialPosition: { x: number; y: number };
+  className?: string;
+};
+
+const DraggablePanel = ({ id, title, icon, description, children, initialPosition, className }: DraggablePanelProps) => {
+  const [position, setPosition] = useState(initialPosition);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!panelRef.current) return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement || e.target instanceof HTMLTextAreaElement) {
+      return;
+    }
+    const rect = panelRef.current.getBoundingClientRect();
+    setIsDragging(true);
+    dragOffset.current = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+    e.preventDefault();
+  };
+
+  const onMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDragging) return;
+    setPosition({
+      x: e.clientX - dragOffset.current.x,
+      y: e.clientY - dragOffset.current.y,
+    });
+  }, [isDragging]);
+
+  const onMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [onMouseMove, onMouseUp]);
+
+  return (
+    <div
+      ref={panelRef}
+      id={id}
+      style={{ top: `${position.y}px`, left: `${position.x}px` }}
+      className={`absolute z-20 w-96 ${className}`}
+    >
+      <Card className="bg-background/80 backdrop-blur-sm border-border/50 shadow-2xl">
+        <CardHeader onMouseDown={onMouseDown} className="cursor-grab active:cursor-grabbing">
+          <CardTitle className="flex items-center gap-2">
+            {icon}
+            {title}
+            <Grab className="w-4 h-4 ml-auto text-muted-foreground" />
+          </CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </CardHeader>
+        <CardContent>{children}</CardContent>
+      </Card>
+    </div>
+  );
+};
+
+
+type CodeGeneratorPanelProps = {
+    anchor: THREE.Vector3 | null;
+    initialPosition: { x: number; y: number };
+};
+
+export default function CodeGeneratorPanel({ anchor, initialPosition }: CodeGeneratorPanelProps) {
+    const [id, setId] = useState('');
+    const [label, setLabel] = useState('');
+    const [capacity, setCapacity] = useState('');
+    const [height, setHeight] = useState('12');
+    const [generatedCode, setGeneratedCode] = useState('');
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (!anchor) {
+            setGeneratedCode('');
+            return;
+        }
+
+        const x = anchor.x.toFixed(4);
+        const y = anchor.y.toFixed(4);
+        const z = anchor.z.toFixed(4);
+
+        const code = `{\n  id: "${id}",\n  label: "${label}",\n  capacity: "${capacity}",\n  anchor: new THREE.Vector3(${x}, ${y}, ${z}),\n  height: ${height},\n}`;
+        setGeneratedCode(code);
+
+    }, [id, label, capacity, height, anchor]);
+
+    const handleCopy = () => {
+        if (generatedCode) {
+            navigator.clipboard.writeText(generatedCode);
+            toast({
+                title: "Code Copied!",
+                description: "The snippet has been copied to your clipboard.",
+            });
+        }
+    };
+
+    return (
+        <DraggablePanel
+            id="code-generator-panel"
+            title="Code Generator"
+            icon={<Code className="h-5 w-5 text-primary" />}
+            description="Create a code snippet from the selected point."
+            initialPosition={initialPosition}
+        >
+            <div className="space-y-4">
+                <div className="space-y-2">
+                    <Label htmlFor="gen-id">ID</Label>
+                    <Input id="gen-id" value={id} onChange={(e) => setId(e.target.value)} placeholder="e.g., mrm2" />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="gen-label">Label</Label>
+                    <Input id="gen-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g., Meeting Room 2" />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="gen-capacity">Capacity</Label>
+                    <Input id="gen-capacity" value={capacity} onChange={(e) => setCapacity(e.target.value)} placeholder="e.g., 8 Pax" />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="gen-height">Height</Label>
+                    <Input id="gen-height" type="number" value={height} onChange={(e) => setHeight(e.target.value)} />
+                </div>
+                
+                <div className='space-y-2'>
+                    <Label>Generated Code</Label>
+                    <div className="relative">
+                        <Textarea
+                            readOnly
+                            value={anchor ? generatedCode : "Click on the model to select an anchor point."}
+                            className="font-mono text-xs h-36 resize-none"
+                            placeholder="Generated code will appear here..."
+                        />
+                        {generatedCode && (
+                            <Button size="icon" variant="ghost" className="absolute top-2 right-2 h-7 w-7" onClick={handleCopy}>
+                                <Copy className="h-4 w-4" />
+                            </Button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </DraggablePanel>
+    );
+}

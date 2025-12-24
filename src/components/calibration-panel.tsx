@@ -158,11 +158,10 @@ const CalibrationPoint = ({
             <div className="space-y-2">
                  <Label>Target Point {pointNumber} (From Project)</Label>
                 <div className="flex gap-2">
-                    <Input placeholder="X" value={targetX} onChange={(e) => setTargetX(e.target.value)} />
-                    <Input placeholder="Y" value={targetY} onChange={(e) => setTargetY(e.target.value)} />
-                    <Input placeholder="Z" value={targetZ} onChange={(e) => setTargetZ(e.target.value)} />
+                    <Input placeholder="X" value={targetX} onChange={(e) => setTargetX(e.target.value)} onBlur={handleSetTarget} />
+                    <Input placeholder="Y" value={targetY} onChange={(e) => setTargetY(e.target.value)} onBlur={handleSetTarget} />
+                    <Input placeholder="Z" value={targetZ} onChange={(e) => setTargetZ(e.target.value)} onBlur={handleSetTarget} />
                 </div>
-                 <Button onClick={handleSetTarget} className="w-full" variant="outline">Set Target Point {pointNumber}</Button>
                  {targetPoint && (
                     <div className="font-mono text-xs p-2 bg-muted rounded">
                         Target: {targetPoint.x.toFixed(2)}, {targetPoint.y.toFixed(2)}, {targetPoint.z.toFixed(2)}
