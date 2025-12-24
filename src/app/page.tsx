@@ -4,8 +4,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Info, Upload, Orbit, Grab } from 'lucide-react';
+import { Info, Upload, Orbit, Grab, Target } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
+import CalibrationPanel from '@/components/calibration-panel';
 
 type DraggablePanelProps = {
   id: string;
@@ -25,6 +26,10 @@ const DraggablePanel = ({ id, title, icon, description, children, initialPositio
 
   const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!panelRef.current) return;
+    // Prevent dragging when interacting with form elements
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement) {
+      return;
+    }
     const rect = panelRef.current.getBoundingClientRect();
     setIsDragging(true);
     dragOffset.current = {
@@ -77,41 +82,60 @@ const DraggablePanel = ({ id, title, icon, description, children, initialPositio
   );
 };
 
-// Function to map scene coordinates to your target coordinate system
-const mapCoordinates = (sceneCoords: THREE.Vector3): THREE.Vector3 => {
-    // Scene: X: 0.6708, Y: 1.1460, Z: -2.6741
-    // Target: X: 8.0, Y: 3, Z: -4
-    const sceneP = new THREE.Vector3(0.6708, 1.1460, -2.6741);
-    const targetP = new THREE.Vector3(8.0, 3, -4);
-
-    const offset = new THREE.Vector3().subVectors(targetP, sceneP);
-    
-    // For now, we assume a simple linear offset. If there's scaling or rotation,
-    // we would need more reference points to define a full transformation matrix.
-    const mappedCoords = new THREE.Vector3().addVectors(sceneCoords, offset);
-
-    return mappedCoords;
-};
-
 
 export default function Home() {
   const [coords, setCoords] = useState<THREE.Vector3 | null>(null);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isClient, setIsClient] = useState(false);
+  const [sceneClick, setSceneClick] = useState<THREE.Vector3 | null>(null);
+  const [calibration, setCalibration] = useState<{
+    scene1: THREE.Vector3 | null,
+    target1: THREE.Vector3 | null,
+    scene2: THREE.Vector3 | null,
+    target2: THREE.Vector3 | null,
+  }>({ scene1: null, target1: null, scene2: null, target2: null });
+  const [isCalibrating, setIsCalibrating] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
+  const mapCoordinates = useCallback((sceneCoords: THREE.Vector3): THREE.Vector3 => {
+      if (!calibration.scene1 || !calibration.target1 || !calibration.scene2 || !calibration.target2) {
+          // Default to a simple offset if not fully calibrated
+          const sceneP = new THREE.Vector3(0.6708, 1.1460, -2.6741);
+          const targetP = new THREE.Vector3(8.0, 3, -4);
+          const offset = new THREE.Vector3().subVectors(targetP, sceneP);
+          return new THREE.Vector3().addVectors(sceneCoords, offset);
+      }
+
+      const sceneDelta = new THREE.Vector3().subVectors(calibration.scene2, calibration.scene1);
+      const targetDelta = new THREE.Vector3().subVectors(calibration.target2, calibration.target1);
+
+      // Avoid division by zero
+      const scale = new THREE.Vector3(
+          sceneDelta.x === 0 ? 1 : targetDelta.x / sceneDelta.x,
+          sceneDelta.y === 0 ? 1 : targetDelta.y / sceneDelta.y,
+          sceneDelta.z === 0 ? 1 : targetDelta.z / sceneDelta.z
+      );
+
+      const relativePos = new THREE.Vector3().subVectors(sceneCoords, calibration.scene1);
+      const scaledPos = relativePos.multiply(scale);
+      const mappedCoords = new THREE.Vector3().addVectors(scaledPos, calibration.target1);
+
+      return mappedCoords;
+  }, [calibration]);
+
   const handleCoordChange = useCallback((newCoords: THREE.Vector3 | null) => {
+    setSceneClick(newCoords);
     if (newCoords) {
         const mappedCoords = mapCoordinates(newCoords);
         setCoords(mappedCoords);
     } else {
         setCoords(null);
     }
-  }, []);
+  }, [mapCoordinates]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -119,6 +143,10 @@ export default function Home() {
       const url = URL.createObjectURL(file);
       setModelUrl(url);
       setCoords(null);
+      setSceneClick(null);
+      // Reset calibration when new model is loaded
+      setCalibration({ scene1: null, target1: null, scene2: null, target2: null });
+      setIsCalibrating(false);
     }
   };
 
@@ -142,18 +170,32 @@ export default function Home() {
                 <p className="text-sm text-muted-foreground">Click on the model to get coordinates</p>
             </div>
         </div>
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          className="hidden"
-          accept=".gltf,.glb"
-        />
-        <Button onClick={handleUploadClick}>
-          <Upload className="mr-2 h-4 w-4" />
-          Upload Model
-        </Button>
+        <div className="flex items-center gap-2">
+            <Button onClick={() => setIsCalibrating(c => !c)} variant={isCalibrating ? "secondary" : "outline"}>
+                <Target className="mr-2 h-4 w-4" />
+                {isCalibrating ? "Finish Calibration" : "Calibrate"}
+            </Button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              className="hidden"
+              accept=".gltf,.glb"
+            />
+            <Button onClick={handleUploadClick}>
+              <Upload className="mr-2 h-4 w-4" />
+              Upload Model
+            </Button>
+        </div>
       </header>
+
+      {isCalibrating && (
+        <CalibrationPanel
+          sceneClick={sceneClick}
+          onCalibrationChange={setCalibration}
+          initialPosition={{ x: 30, y: 100 }}
+        />
+      )}
 
       <DraggablePanel
         id="coords-panel"
