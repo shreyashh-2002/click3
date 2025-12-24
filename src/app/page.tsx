@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Button } from "@/components/ui/button";
 import { Info, Upload, Code } from 'lucide-react';
@@ -28,9 +28,9 @@ export default function Home() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const handleCoordChange = (newCoords: THREE.Vector3 | null) => {
+  const handleCoordChange = useCallback((newCoords: THREE.Vector3 | null) => {
     setSceneClick(newCoords);
-  };
+  }, []);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
