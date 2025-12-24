@@ -12,7 +12,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const favicon = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none'%3E%3Cpath d='M28 5H4C3.44772 5 3 5.44772 3 6V26C3 26.5523 3.44772 27 4 27H28C28.5523 27 29 26.5523 29 26V6C29 5.44772 28.5523 5 28 5Z' fill='%234285F4'/%3E%3Cpath d='M29 9H3V6C3 5.44772 3.44772 5 4 5H28C28.5523 5 29 5.44772 29 6V9Z' fill='%231E293B'/%3E%3Ccircle cx='7' cy='7' r='1' fill='%234285F4'/%3E%3Ccircle cx='11' cy='7' r='1' fill='%234285F4'/%3E%3C/svg%3E`;
+  const favicon = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234285F4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'%3E%3C/circle%3E%3Cline x1='2' y1='12' x2='22' y2='12'%3E%3C/line%3E%3Cpath d='M12 2a15.3 15.3 0 0 1 4 18 15.3 15.3 0 0 1-8 0 15.3 15.3 0 0 1 4-18z'%3E%3C/path%3E%3C/svg%3E`;
 
   return (
     <html lang="en">
