@@ -5,11 +5,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Info, HelpCircle, Upload, Orbit, Grab } from 'lucide-react';
+import { Info, Upload, Orbit, Grab } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
-import { explainCoordinates } from '@/ai/flows/coordinate-explanation';
-import { getSuggestedActions } from '@/ai/flows/suggested-actions';
-import { Skeleton } from '@/components/ui/skeleton';
 
 type DraggablePanelProps = {
   id: string;
@@ -83,11 +80,7 @@ const DraggablePanel = ({ id, title, icon, description, children, initialPositio
 
 export default function Home() {
   const [coords, setCoords] = useState<THREE.Vector3 | null>(null);
-  const [explanation, setExplanation] = useState<string | null>(null);
-  const [actions, setActions] = useState<string[] | null>(null);
-  const [isLoadingAI, setIsLoadingAI] = useState(false);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
-  const [modelDescription, setModelDescription] = useState<string>("A torus knot model.");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isClient, setIsClient] = useState(false);
 
@@ -104,7 +97,6 @@ export default function Home() {
     if (file) {
       const url = URL.createObjectURL(file);
       setModelUrl(url);
-      setModelDescription(`A user-uploaded model named ${file.name}.`);
       setCoords(null);
     }
   };
@@ -112,35 +104,6 @@ export default function Home() {
   const handleUploadClick = () => {
     fileInputRef.current?.click();
   };
-  
-  useEffect(() => {
-    if (coords) {
-      const fetchAIInsights = async () => {
-        setIsLoadingAI(true);
-        setExplanation(null);
-        setActions(null);
-
-        try {
-          const [explanationResult, actionsResult] = await Promise.all([
-            explainCoordinates({ x: coords.x, y: coords.y, z: coords.z, modelDescription }),
-            getSuggestedActions({ x: coords.x, y: coords.y, z: coords.z })
-          ]);
-          setExplanation(explanationResult.explanation);
-          setActions(actionsResult.actions);
-        } catch (error) {
-          console.error("Error fetching AI insights:", error);
-          setExplanation("Could not get an explanation for these coordinates.");
-          setActions([]);
-        } finally {
-          setIsLoadingAI(false);
-        }
-      };
-      fetchAIInsights();
-    } else {
-      setExplanation(null);
-      setActions(null);
-    }
-  }, [coords, modelDescription]);
 
   if (!isClient) {
     return null;
@@ -191,51 +154,6 @@ export default function Home() {
           )}
         </div>
       </DraggablePanel>
-
-      {(coords || isLoadingAI) && (
-        <DraggablePanel
-          id="ai-panel"
-          title="AI Insights"
-          icon={<HelpCircle className="h-5 w-5 text-accent" />}
-          description="Contextual information and actions."
-          initialPosition={{ x: window.innerWidth - 350, y: 320 }}
-          className="min-h-[280px]"
-        >
-          <div className="space-y-4">
-            <div>
-              <h3 className="font-semibold text-md mb-2">Explanation</h3>
-              {isLoadingAI ? (
-                 <div className="space-y-2 p-3 bg-muted rounded-lg">
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-3/4" />
-                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">{explanation}</p>
-              )}
-            </div>
-            
-            <div>
-              <h3 className="font-semibold text-md mb-2">Suggested Actions</h3>
-               {isLoadingAI ? (
-                 <div className="space-y-2">
-                   <Skeleton className="h-10 w-full" />
-                   <Skeleton className="h-10 w-full" />
-                 </div>
-               ) : (
-                <div className="flex flex-col gap-2">
-                  {actions && actions.length > 0 ? actions.map((action, index) => (
-                    <Button key={index} variant="secondary" className="justify-start text-left h-auto py-2">
-                      {action}
-                    </Button>
-                  )) : <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg text-center">No suggestions.</p>}
-                </div>
-              )}
-            </div>
-          </div>
-        </DraggablePanel>
-      )}
-
     </main>
   );
 }
