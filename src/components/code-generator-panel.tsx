@@ -33,7 +33,7 @@ export default function CodeGeneratorPanel({ anchor, initialPosition }: CodeGene
         }
 
         const x = anchor.x.toFixed(4);
-        const y = 2.7; // Hardcoded y-position as requested
+        const y = 2.0; // Hardcoded y-position as requested
         const z = anchor.z.toFixed(4);
 
         const code = `{
