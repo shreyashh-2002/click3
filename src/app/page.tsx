@@ -166,7 +166,7 @@ export default function Home() {
       {showGenerator && (
         <CodeGeneratorPanel
           anchor={coords}
-          initialPosition={{ x: 30, y: isCalibrating ? 530 : 120 }}
+          initialPosition={{ x: 30, y: isCalibrating ? 540 : 120 }}
         />
       )}
 
