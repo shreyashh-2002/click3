@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Info, Upload, Orbit, Target, Code } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
-import CalibrationPanel from '@/components/calibration-panel';
 import CodeGeneratorPanel from '@/components/code-generator-panel';
 import DraggablePanel from '@/components/draggable-panel';
 
@@ -28,7 +27,6 @@ export default function Home() {
     scene2: new THREE.Vector3(18.8391, 2.2537, -8.1187),
     target2: new THREE.Vector3(12, 3, -6)
   });
-  const [isCalibrating, setIsCalibrating] = useState(false);
   const [showGenerator, setShowGenerator] = useState(false);
   
   const [windowSize, setWindowSize] = useState({width: 0, height: 0});
@@ -106,8 +104,12 @@ export default function Home() {
       setCoords(null);
       setSceneClick(null);
       // Reset calibration when new model is loaded
-      setCalibration({ scene1: null, target1: null, scene2: null, target2: null });
-      setIsCalibrating(false);
+      setCalibration({ 
+        scene1: new THREE.Vector3(15.6768, 3.9051, -5.2787),
+        target1: new THREE.Vector3(8, 3, -4),
+        scene2: new THREE.Vector3(18.8391, 2.2537, -8.1187),
+        target2: new THREE.Vector3(12, 3, -6)
+      });
     }
   };
 
@@ -136,10 +138,6 @@ export default function Home() {
                 <Code className="mr-2 h-4 w-4" />
                 Generator
             </Button>
-            <Button onClick={() => setIsCalibrating(c => !c)} variant={isCalibrating ? "secondary" : "outline"} size="sm">
-                <Target className="mr-2 h-4 w-4" />
-                Calibrate
-            </Button>
             <input
               type="file"
               ref={fileInputRef}
@@ -153,20 +151,11 @@ export default function Home() {
             </Button>
         </div>
       </header>
-
-      {isCalibrating && (
-        <CalibrationPanel
-          sceneClick={sceneClick}
-          onCalibrationChange={setCalibration}
-          initialPosition={{ x: 30, y: 120 }}
-          calibration={calibration}
-        />
-      )}
       
       {showGenerator && (
         <CodeGeneratorPanel
           anchor={coords}
-          initialPosition={{ x: 30, y: isCalibrating ? 540 : 120 }}
+          initialPosition={{ x: 30, y: 120 }}
         />
       )}
 
