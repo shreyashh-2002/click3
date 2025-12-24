@@ -141,7 +141,7 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
     let animationFrameId: number;
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
-      if (currentModel === fallbackModel) { // only rotate the default model
+      if (currentModel && currentModel === fallbackModel) { // only rotate the default model
         currentModel.rotation.x += 0.001;
         currentModel.rotation.y += 0.002;
       }
