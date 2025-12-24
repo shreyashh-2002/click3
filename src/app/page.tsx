@@ -175,7 +175,7 @@ export default function Home() {
         title="Coordinate Data"
         icon={<Info className="h-5 w-5 text-primary" />}
         description={coords ? "Information about the selected point." : "Click on the model to see details."}
-        initialPosition={{ x: windowSize.width - 410, y: 30 }}
+        initialPosition={{ x: windowSize.width - 350, y: windowSize.height - 250 }}
         className="w-80"
       >
         <div className="space-y-4">
