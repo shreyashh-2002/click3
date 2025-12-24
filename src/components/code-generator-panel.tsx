@@ -49,7 +49,7 @@ export default function CodeGeneratorPanel({ anchor, initialPosition }: CodeGene
 
     const handleSave = () => {
         if (currentSnippet) {
-            setAllGeneratedCode(prev => prev ? `${prev},\n${currentSnippet}` : `[\n${currentSnippet}\n]`);
+            setAllGeneratedCode(prev => prev ? `${prev},\n${currentSnippet}` : currentSnippet);
             toast({
                 title: "Snippet Saved!",
                 description: "The snippet has been added to the collection.",
@@ -59,7 +59,9 @@ export default function CodeGeneratorPanel({ anchor, initialPosition }: CodeGene
 
     const handleCopyAll = () => {
         if (allGeneratedCode) {
-            navigator.clipboard.writeText(allGeneratedCode);
+            // Wrap in brackets when copying for a valid array
+            const codeToCopy = `[\n${allGeneratedCode}\n]`;
+            navigator.clipboard.writeText(codeToCopy);
             toast({
                 title: "All Code Copied!",
                 description: "The collected snippets have been copied to your clipboard.",
