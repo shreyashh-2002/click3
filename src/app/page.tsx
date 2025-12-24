@@ -88,9 +88,9 @@ export default function Home() {
     setIsClient(true);
   }, []);
 
-  const handleCoordChange = (newCoords: THREE.Vector3 | null) => {
+  const handleCoordChange = useCallback((newCoords: THREE.Vector3 | null) => {
     setCoords(newCoords);
-  };
+  }, []);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
