@@ -108,28 +108,47 @@ export default function Home() {
 
   const mapCoordinates = useCallback((sceneCoords: THREE.Vector3): THREE.Vector3 => {
       if (!calibration.scene1 || !calibration.target1 || !calibration.scene2 || !calibration.target2) {
-          // Default to a simple offset if not fully calibrated
-          const sceneP = new THREE.Vector3(0.6708, 1.1460, -2.6741);
-          const targetP = new THREE.Vector3(8.0, 3, -4);
-          const offset = new THREE.Vector3().subVectors(targetP, sceneP);
-          return new THREE.Vector3().addVectors(sceneCoords, offset);
+          // Return raw coordinates if not calibrated
+          return sceneCoords;
       }
 
-      const sceneDelta = new THREE.Vector3().subVectors(calibration.scene2, calibration.scene1);
-      const targetDelta = new THREE.Vector3().subVectors(calibration.target2, calibration.target1);
+      // This performs a linear interpolation/extrapolation for each axis independently.
+      // It's a robust way to handle scaling and translation differences between coordinate systems.
+      // Formula: target = t1 + (s - s1) * (t2 - t1) / (s2 - s1)
 
-      // Avoid division by zero
-      const scale = new THREE.Vector3(
-          sceneDelta.x === 0 ? 1 : targetDelta.x / sceneDelta.x,
-          sceneDelta.y === 0 ? 1 : targetDelta.y / sceneDelta.y,
-          sceneDelta.z === 0 ? 1 : targetDelta.z / sceneDelta.z
-      );
+      const s1 = calibration.scene1;
+      const t1 = calibration.target1;
+      const s2 = calibration.scene2;
+      const t2 = calibration.target2;
+      const s = sceneCoords;
+      
+      const target = new THREE.Vector3();
 
-      const relativePos = new THREE.Vector3().subVectors(sceneCoords, calibration.scene1);
-      const scaledPos = relativePos.multiply(scale);
-      const mappedCoords = new THREE.Vector3().addVectors(scaledPos, calibration.target1);
+      // X-axis
+      const sceneDeltaX = s2.x - s1.x;
+      if (sceneDeltaX === 0) {
+        target.x = t1.x; // No change on this axis, just use offset
+      } else {
+        target.x = t1.x + (s.x - s1.x) * (t2.x - t1.x) / sceneDeltaX;
+      }
+      
+      // Y-axis
+      const sceneDeltaY = s2.y - s1.y;
+      if (sceneDeltaY === 0) {
+        target.y = t1.y; // No change on this axis, just use offset
+      } else {
+        target.y = t1.y + (s.y - s1.y) * (t2.y - t1.y) / sceneDeltaY;
+      }
 
-      return mappedCoords;
+      // Z-axis
+      const sceneDeltaZ = s2.z - s1.z;
+      if (sceneDeltaZ === 0) {
+        target.z = t1.z; // No change on this axis, just use offset
+      } else {
+        target.z = t1.z + (s.z - s1.z) * (t2.z - t1.z) / sceneDeltaZ;
+      }
+
+      return target;
   }, [calibration]);
 
   const handleCoordChange = useCallback((newCoords: THREE.Vector3 | null) => {
