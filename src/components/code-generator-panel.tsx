@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Code, Copy } from 'lucide-react';
+import { Code, Copy, Save } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 
 
@@ -22,12 +22,13 @@ export default function CodeGeneratorPanel({ anchor, initialPosition }: CodeGene
     const [label, setLabel] = useState('');
     const [capacity, setCapacity] = useState('');
     const [height, setHeight] = useState('12');
-    const [generatedCode, setGeneratedCode] = useState('');
+    const [currentSnippet, setCurrentSnippet] = useState('');
+    const [allGeneratedCode, setAllGeneratedCode] = useState('');
     const { toast } = useToast();
 
     useEffect(() => {
         if (!anchor) {
-            setGeneratedCode('');
+            setCurrentSnippet('');
             return;
         }
 
@@ -42,16 +43,26 @@ export default function CodeGeneratorPanel({ anchor, initialPosition }: CodeGene
   anchor: new THREE.Vector3(${x}, ${y}, ${z}),
   height: ${height},
 }`;
-        setGeneratedCode(code);
+        setCurrentSnippet(code);
 
     }, [id, label, capacity, height, anchor]);
 
-    const handleCopy = () => {
-        if (generatedCode) {
-            navigator.clipboard.writeText(generatedCode);
+    const handleSave = () => {
+        if (currentSnippet) {
+            setAllGeneratedCode(prev => prev ? `${prev},\n${currentSnippet}` : `[\n${currentSnippet}\n]`);
             toast({
-                title: "Code Copied!",
-                description: "The snippet has been copied to your clipboard.",
+                title: "Snippet Saved!",
+                description: "The snippet has been added to the collection.",
+            });
+        }
+    };
+
+    const handleCopyAll = () => {
+        if (allGeneratedCode) {
+            navigator.clipboard.writeText(allGeneratedCode);
+            toast({
+                title: "All Code Copied!",
+                description: "The collected snippets have been copied to your clipboard.",
             });
         }
     };
@@ -61,7 +72,7 @@ export default function CodeGeneratorPanel({ anchor, initialPosition }: CodeGene
             id="code-generator-panel"
             title="Code Generator"
             icon={<Code className="h-5 w-5 text-primary" />}
-            description="Create a code snippet from the selected point."
+            description="Create and save code snippets from selected points."
             initialPosition={initialPosition}
             className="w-96"
         >
@@ -82,18 +93,23 @@ export default function CodeGeneratorPanel({ anchor, initialPosition }: CodeGene
                     <Label htmlFor="gen-height">Height</Label>
                     <Input id="gen-height" type="number" value={height} onChange={(e) => setHeight(e.target.value)} />
                 </div>
+
+                <Button onClick={handleSave} disabled={!currentSnippet} className="w-full">
+                    <Save className="mr-2 h-4 w-4" />
+                    Save Snippet
+                </Button>
                 
                 <div className='space-y-2'>
-                    <Label>Generated Code</Label>
+                    <Label>Saved Snippets</Label>
                     <div className="relative">
                         <Textarea
                             readOnly
-                            value={anchor ? generatedCode : "Click on the model to select an anchor point."}
+                            value={anchor ? allGeneratedCode : "Click on the model to select an anchor point and save snippets."}
                             className="font-mono text-xs h-40 resize-none bg-muted"
-                            placeholder="Generated code will appear here..."
+                            placeholder="Saved code snippets will appear here..."
                         />
-                        {generatedCode && (
-                            <Button size="icon" variant="ghost" className="absolute top-2 right-2 h-7 w-7" onClick={handleCopy}>
+                        {allGeneratedCode && (
+                            <Button size="icon" variant="ghost" className="absolute top-2 right-2 h-7 w-7" onClick={handleCopyAll}>
                                 <Copy className="h-4 w-4" />
                             </Button>
                         )}
@@ -103,5 +119,3 @@ export default function CodeGeneratorPanel({ anchor, initialPosition }: CodeGene
         </DraggablePanel>
     );
 }
-
-    
