@@ -2,9 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Info, Upload, Orbit, Target, Code } from 'lucide-react';
+import { Info, Upload, Orbit, Code } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
 import CodeGeneratorPanel from '@/components/code-generator-panel';
 import DraggablePanel from '@/components/draggable-panel';
@@ -43,14 +42,11 @@ export default function Home() {
 
   const mapCoordinates = useCallback((sceneCoords: THREE.Vector3): THREE.Vector3 => {
       if (!calibration.scene1 || !calibration.target1 || !calibration.scene2 || !calibration.target2) {
-          // Return raw coordinates if not calibrated
           return sceneCoords;
       }
 
-      // This performs a linear interpolation/extrapolation for each axis independently.
-      // It's a robust way to handle scaling and translation differences between coordinate systems.
+      // Linear interpolation/extrapolation for each axis independently.
       // Formula: target = t1 + (s - s1) * (t2 - t1) / (s2 - s1)
-
       const s1 = calibration.scene1;
       const t1 = calibration.target1;
       const s2 = calibration.scene2;
@@ -59,29 +55,17 @@ export default function Home() {
       
       const target = new THREE.Vector3();
 
-      // X-axis
-      const sceneDeltaX = s2.x - s1.x;
-      if (sceneDeltaX === 0) {
-        target.x = t1.x; // No change on this axis, just use offset
-      } else {
-        target.x = t1.x + (s.x - s1.x) * (t2.x - t1.x) / sceneDeltaX;
-      }
-      
-      // Y-axis
-      const sceneDeltaY = s2.y - s1.y;
-      if (sceneDeltaY === 0) {
-        target.y = t1.y; // No change on this axis, just use offset
-      } else {
-        target.y = t1.y + (s.y - s1.y) * (t2.y - t1.y) / sceneDeltaY;
+      const calculate = (s_val: number, s1_val: number, s2_val: number, t1_val: number, t2_val: number) => {
+        const sceneDelta = s2_val - s1_val;
+        if (sceneDelta === 0) {
+            return t1_val; // Avoid division by zero; assume simple offset.
+        }
+        return t1_val + (s_val - s1_val) * (t2_val - t1_val) / sceneDelta;
       }
 
-      // Z-axis
-      const sceneDeltaZ = s2.z - s1.z;
-      if (sceneDeltaZ === 0) {
-        target.z = t1.z; // No change on this axis, just use offset
-      } else {
-        target.z = t1.z + (s.z - s1.z) * (t2.z - t1.z) / sceneDeltaZ;
-      }
+      target.x = calculate(s.x, s1.x, s2.x, t1.x, t2.x);
+      target.y = calculate(s.y, s1.y, s2.y, t1.y, t2.y);
+      target.z = calculate(s.z, s1.z, s2.z, t1.z, t2.z);
 
       return target;
   }, [calibration]);
@@ -103,7 +87,6 @@ export default function Home() {
       setModelUrl(url);
       setCoords(null);
       setSceneClick(null);
-      // Reset calibration when new model is loaded
       setCalibration({ 
         scene1: new THREE.Vector3(15.6768, 3.9051, -5.2787),
         target1: new THREE.Vector3(8, 3, -4),
