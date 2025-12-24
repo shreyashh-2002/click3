@@ -29,39 +29,25 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
       0.1,
       1000
     );
-    camera.position.set(4, 4, 4);
+    camera.position.set(5, 5, 5);
 
     // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(currentMount.clientWidth, currentMount.clientHeight);
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     currentMount.appendChild(renderer.domElement);
 
     // Controls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.minDistance = 2;
-    controls.maxDistance = 50;
-    controls.autoRotate = true;
-    controls.autoRotateSpeed = 0.3;
 
     // Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-    scene.add(ambientLight);
-
-    const keyLight = new THREE.DirectionalLight(0xffffff, 2.5);
-    keyLight.position.set(5, 10, 7.5);
-    keyLight.castShadow = true;
-    keyLight.shadow.mapSize.width = 2048;
-    keyLight.shadow.mapSize.height = 2048;
-    scene.add(keyLight);
-    
-    const fillLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    fillLight.position.set(-5, -5, -7.5);
-    scene.add(fillLight);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+    dirLight.position.set(10, 10, 10);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
 
     // Grid and ground plane
     const grid = new THREE.GridHelper(50, 50, 0x444444, 0x444444);
@@ -69,7 +55,7 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
 
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(50, 50),
-      new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8, metalness: 0.2 })
+      new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
@@ -87,24 +73,12 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
             }
         });
 
-        // Center, scale, and align model to ground
+        // --- Applying your alignment logic ---
         const box = new THREE.Box3().setFromObject(model);
-        const size = box.getSize(new THREE.Vector3());
         const center = box.getCenter(new THREE.Vector3());
-
-        // Scale model to a consistent size
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const scale = 3 / maxDim;
-        model.scale.set(scale, scale, scale);
-
-        // Recalculate bounding box after scaling
-        const scaledBox = new THREE.Box3().setFromObject(model);
-        const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
-
-        // Center the model and place its bottom on the ground plane (y=0)
-        model.position.x += (scaledBox.min.x - scaledCenter.x);
-        model.position.y -= scaledBox.min.y;
-        model.position.z += (scaledBox.min.z - scaledCenter.z);
+        
+        model.position.sub(center); // Center the model at the origin
+        model.position.y -= box.min.y; // Place model's bottom on the ground (y=0)
 
         if (currentModel) {
             scene.remove(currentModel);
@@ -113,6 +87,10 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
         currentModel = model;
         onCoordChange(null);
         controls.autoRotate = false;
+
+        // Reset controls target
+        controls.target.set(0, model.position.y + box.getSize(new THREE.Vector3()).y / 2, 0);
+
         if(intersectionMarker) {
             scene.remove(intersectionMarker);
             intersectionMarker = null;
