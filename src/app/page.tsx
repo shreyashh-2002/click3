@@ -79,9 +79,9 @@ const DraggablePanel = ({ id, title, icon, description, children, initialPositio
 
 // Function to map scene coordinates to your target coordinate system
 const mapCoordinates = (sceneCoords: THREE.Vector3): THREE.Vector3 => {
-    // Scene: X: 15.8739, Y: 3.9051, Z: -5.1564
+    // Scene: X: 0.6708, Y: 1.1460, Z: -2.6741
     // Target: X: 8.0, Y: 3, Z: -4
-    const sceneP = new THREE.Vector3(15.8739, 3.9051, -5.1564);
+    const sceneP = new THREE.Vector3(0.6708, 1.1460, -2.6741);
     const targetP = new THREE.Vector3(8.0, 3, -4);
 
     const offset = new THREE.Vector3().subVectors(targetP, sceneP);
