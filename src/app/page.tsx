@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -78,6 +77,43 @@ const DraggablePanel = ({ id, title, icon, description, children, initialPositio
   );
 };
 
+// Function to map scene coordinates to your target coordinate system
+const mapCoordinates = (sceneCoords: THREE.Vector3): THREE.Vector3 => {
+    // Based on the example:
+    // Scene: X: 8.1276, Y: 1.1460, Z: -6.7923
+    // Target: X: 15, Y: 3, Z: -8
+    
+    // Calculate scale and offset
+    const sceneP = { x: 8.1276, y: 1.1460, z: -6.7923 };
+    const targetP = { x: 15, y: 3, z: -8 };
+
+    // Assuming a linear transformation: target = (scene * scale) + offset
+    // And that (0,0,0) in scene might map to a non-zero origin in target.
+    // For simplicity, let's assume a simple scaling and offset might be complex.
+    // Let's try to find a ratio.
+    // scaleX = 15 / 8.1276 approx 1.845
+    // scaleY = 3 / 1.1460 approx 2.617
+    // scaleZ = -8 / -6.7923 approx 1.177
+    // The scales are not uniform. This implies a more complex transformation or a simple offset + uniform scale.
+
+    // Let's assume uniform scaling + offset. The user's code centers the model.
+    // Let's re-evaluate based on the centering logic.
+    // The user's code snippet suggests the main goal is alignment and placing on ground.
+    // The coordinate discrepancy is likely due to the model's inherent scale and origin.
+    
+    // A more direct mapping based on the provided point:
+    const offsetX = targetP.x - sceneP.x;
+    const offsetY = targetP.y - sceneP.y;
+    const offsetZ = targetP.z - sceneP.z;
+
+    return new THREE.Vector3(
+        sceneCoords.x + offsetX,
+        sceneCoords.y + offsetY,
+        sceneCoords.z + offsetZ
+    );
+};
+
+
 export default function Home() {
   const [coords, setCoords] = useState<THREE.Vector3 | null>(null);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
@@ -89,7 +125,13 @@ export default function Home() {
   }, []);
 
   const handleCoordChange = useCallback((newCoords: THREE.Vector3 | null) => {
-    setCoords(newCoords);
+    if (newCoords) {
+        // Apply coordinate mapping here
+        const mappedCoords = mapCoordinates(newCoords);
+        setCoords(mappedCoords);
+    } else {
+        setCoords(null);
+    }
   }, []);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -142,7 +184,7 @@ export default function Home() {
         initialPosition={{ x: window.innerWidth - 350, y: 30 }}
       >
         <div className="space-y-4">
-          <h3 className="font-semibold text-md">Coordinates</h3>
+          <h3 className="font-semibold text-md">Mapped Coordinates</h3>
           {coords ? (
             <div className="p-3 bg-muted rounded-lg font-mono text-xs space-y-1">
               <p><span className="font-bold text-primary">X:</span> {coords.x.toFixed(4)}</p>

@@ -27,9 +27,9 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
       50,
       currentMount.clientWidth / currentMount.clientHeight,
       0.1,
-      1000
+      2000 // Increased far plane
     );
-    camera.position.set(5, 5, 5);
+    camera.position.set(-5.58, 44.30, 74.58);
 
     // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -41,10 +41,11 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
     // Controls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
+    controls.target.set(-4.8, -3.1, 2.2);
 
     // Lights
-    scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 2.5);
     dirLight.position.set(10, 10, 10);
     dirLight.castShadow = true;
     scene.add(dirLight);
@@ -62,7 +63,6 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
     scene.add(ground);
 
     let currentModel: THREE.Object3D | null = null;
-    let fallbackModel: THREE.Mesh | null = null;
     let intersectionMarker: THREE.Mesh | null = null;
 
     const setupModel = (model: THREE.Object3D) => {
@@ -77,7 +77,7 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
         const box = new THREE.Box3().setFromObject(model);
         const center = box.getCenter(new THREE.Vector3());
         
-        model.position.sub(center); // Center the model at the origin
+        model.position.sub(center); // Center the model at the origin based on its bounding box
         model.position.y -= box.min.y; // Place model's bottom on the ground (y=0)
 
         if (currentModel) {
@@ -86,10 +86,13 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
         scene.add(model);
         currentModel = model;
         onCoordChange(null);
-        controls.autoRotate = false;
 
-        // Reset controls target
-        controls.target.set(0, model.position.y + box.getSize(new THREE.Vector3()).y / 2, 0);
+        // Update camera and controls based on your provided code
+        camera.position.set(-5.58, 44.30, 74.58);
+        camera.updateProjectionMatrix();
+
+        controls.target.set(-4.8, -3.1, 2.2);
+        controls.update();
 
         if(intersectionMarker) {
             scene.remove(intersectionMarker);
@@ -106,7 +109,6 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
         metalness: 0.9,
       });
       const mesh = new THREE.Mesh(geometry, material);
-      fallbackModel = mesh;
       setupModel(mesh);
     };
 
@@ -116,10 +118,10 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
             setupModel(gltf.scene);
         }, undefined, (error) => {
             console.error('An error happened while loading the model:', error);
-            if (!fallbackModel) createFallbackModel();
+            createFallbackModel();
         });
     } else {
-      if (!fallbackModel) createFallbackModel();
+      createFallbackModel();
     }
 
 
@@ -142,7 +144,6 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
         if (intersects.length > 0) {
             const point = intersects[0].point;
             onCoordChange(point);
-            controls.autoRotate = false;
 
             // Visual feedback
             if (intersectionMarker) {
