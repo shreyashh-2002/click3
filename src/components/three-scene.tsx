@@ -112,6 +112,7 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
     if (modelUrl) {
         const loader = new GLTFLoader();
         loader.load(modelUrl, (gltf) => {
+            scene.remove(ground); // Remove the ground plane when a model is loaded
             setupModel(gltf.scene);
         }, undefined, (error) => {
             console.error('An error happened while loading the model:', error);
@@ -146,7 +147,7 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
             if (intersectionMarker) {
               scene.remove(intersectionMarker);
             }
-            const markerGeometry = new THREE.SphereGeometry(0.05, 16, 16);
+            const markerGeometry = new THREE.SphereGeometry(0.15, 16, 16); // Made marker slightly larger
             const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xa78bfa }); // Accent color
             intersectionMarker = new THREE.Mesh(markerGeometry, markerMaterial);
             intersectionMarker.position.copy(point);
