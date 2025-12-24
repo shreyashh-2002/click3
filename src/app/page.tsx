@@ -1,14 +1,85 @@
+
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Info, HelpCircle, Upload } from 'lucide-react';
+import { Info, HelpCircle, Upload, Orbit, Grab } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
 import { explainCoordinates } from '@/ai/flows/coordinate-explanation';
 import { getSuggestedActions } from '@/ai/flows/suggested-actions';
 import { Skeleton } from '@/components/ui/skeleton';
+
+type DraggablePanelProps = {
+  id: string;
+  title: string;
+  icon: React.ReactNode;
+  description: string;
+  children: React.ReactNode;
+  initialPosition: { x: number; y: number };
+  className?: string;
+};
+
+const DraggablePanel = ({ id, title, icon, description, children, initialPosition, className }: DraggablePanelProps) => {
+  const [position, setPosition] = useState(initialPosition);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!panelRef.current) return;
+    const rect = panelRef.current.getBoundingClientRect();
+    setIsDragging(true);
+    dragOffset.current = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+    e.preventDefault();
+  };
+
+  const onMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDragging) return;
+    setPosition({
+      x: e.clientX - dragOffset.current.x,
+      y: e.clientY - dragOffset.current.y,
+    });
+  }, [isDragging]);
+
+  const onMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [onMouseMove, onMouseUp]);
+
+  return (
+    <div
+      ref={panelRef}
+      id={id}
+      style={{ top: `${position.y}px`, left: `${position.x}px` }}
+      className={`absolute z-20 w-80 ${className}`}
+    >
+      <Card className="bg-background/80 backdrop-blur-sm border-border/50 shadow-2xl">
+        <CardHeader onMouseDown={onMouseDown} className="cursor-grab active:cursor-grabbing">
+          <CardTitle className="flex items-center gap-2">
+            {icon}
+            {title}
+            <Grab className="w-4 h-4 ml-auto text-muted-foreground" />
+          </CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </CardHeader>
+        <CardContent>{children}</CardContent>
+      </Card>
+    </div>
+  );
+};
 
 export default function Home() {
   const [coords, setCoords] = useState<THREE.Vector3 | null>(null);
@@ -18,6 +89,11 @@ export default function Home() {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const [modelDescription, setModelDescription] = useState<string>("A torus knot model.");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const handleCoordChange = (newCoords: THREE.Vector3 | null) => {
     setCoords(newCoords);
@@ -66,93 +142,100 @@ export default function Home() {
     }
   }, [coords, modelDescription]);
 
+  if (!isClient) {
+    return null;
+  }
+
   return (
-    <main className="flex h-screen w-screen flex-col lg:flex-row bg-background text-foreground overflow-hidden">
-      <div className="flex-grow h-1/2 lg:h-full lg:w-3/4 relative">
-        <header className="absolute top-0 left-0 p-6 z-10 w-full flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold font-headline text-primary">Click Tracer</h1>
-            <p className="text-lg text-muted-foreground">Click on the model to get coordinates</p>
-          </div>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            className="hidden"
-            accept=".gltf,.glb"
-          />
-          <Button onClick={handleUploadClick}>
-            <Upload className="mr-2 h-4 w-4" />
-            Upload Model
-          </Button>
-        </header>
-        <ThreeScene onCoordChange={handleCoordChange} modelUrl={modelUrl} />
-      </div>
-      <aside className="h-1/2 lg:h-full lg:w-1/4 p-4 lg:p-6 border-t lg:border-t-0 lg:border-l border-border">
-        <Card className="h-full w-full flex flex-col bg-card shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Info className="h-5 w-5 text-primary" />
-              Coordinate Data
-            </CardTitle>
-            <CardDescription>
-              {coords ? "Information about the selected point." : "Click on the model to see details."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-8 overflow-y-auto flex-grow">
+    <main className="h-screen w-screen overflow-hidden bg-background text-foreground">
+      <ThreeScene onCoordChange={handleCoordChange} modelUrl={modelUrl} />
+
+      <header className="absolute top-0 left-0 p-4 z-10 w-full flex justify-between items-center">
+        <div className="flex items-center gap-3">
+            <Orbit className="w-8 h-8 text-primary" />
             <div>
-              <h3 className="font-semibold text-lg mb-2">Coordinates</h3>
-              {coords ? (
-                <div className="p-4 bg-muted rounded-lg font-mono text-sm space-y-1">
-                  <p><span className="font-bold text-primary">X:</span> {coords.x.toFixed(4)}</p>
-                  <p><span className="font-bold text-primary">Y:</span> {coords.y.toFixed(4)}</p>
-                  <p><span className="font-bold text-primary">Z:</span> {coords.z.toFixed(4)}</p>
-                </div>
+                <h1 className="text-2xl font-bold font-headline">Click Tracer</h1>
+                <p className="text-sm text-muted-foreground">Click on the model to get coordinates</p>
+            </div>
+        </div>
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          className="hidden"
+          accept=".gltf,.glb"
+        />
+        <Button onClick={handleUploadClick}>
+          <Upload className="mr-2 h-4 w-4" />
+          Upload Model
+        </Button>
+      </header>
+
+      <DraggablePanel
+        id="coords-panel"
+        title="Coordinate Data"
+        icon={<Info className="h-5 w-5 text-primary" />}
+        description={coords ? "Information about the selected point." : "Click on the model to see details."}
+        initialPosition={{ x: window.innerWidth - 350, y: 30 }}
+      >
+        <div className="space-y-4">
+          <h3 className="font-semibold text-md">Coordinates</h3>
+          {coords ? (
+            <div className="p-3 bg-muted rounded-lg font-mono text-xs space-y-1">
+              <p><span className="font-bold text-primary">X:</span> {coords.x.toFixed(4)}</p>
+              <p><span className="font-bold text-primary">Y:</span> {coords.y.toFixed(4)}</p>
+              <p><span className="font-bold text-primary">Z:</span> {coords.z.toFixed(4)}</p>
+            </div>
+          ) : (
+            <p className="text-muted-foreground italic text-sm text-center">No point selected.</p>
+          )}
+        </div>
+      </DraggablePanel>
+
+      {(coords || isLoadingAI) && (
+        <DraggablePanel
+          id="ai-panel"
+          title="AI Insights"
+          icon={<HelpCircle className="h-5 w-5 text-accent" />}
+          description="Contextual information and actions."
+          initialPosition={{ x: window.innerWidth - 350, y: 320 }}
+          className="min-h-[280px]"
+        >
+          <div className="space-y-4">
+            <div>
+              <h3 className="font-semibold text-md mb-2">Explanation</h3>
+              {isLoadingAI ? (
+                 <div className="space-y-2 p-3 bg-muted rounded-lg">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-3/4" />
+                 </div>
               ) : (
-                <p className="text-muted-foreground italic p-4 bg-muted rounded-lg text-center">No point selected.</p>
+                <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">{explanation}</p>
               )}
             </div>
+            
+            <div>
+              <h3 className="font-semibold text-md mb-2">Suggested Actions</h3>
+               {isLoadingAI ? (
+                 <div className="space-y-2">
+                   <Skeleton className="h-10 w-full" />
+                   <Skeleton className="h-10 w-full" />
+                 </div>
+               ) : (
+                <div className="flex flex-col gap-2">
+                  {actions && actions.length > 0 ? actions.map((action, index) => (
+                    <Button key={index} variant="secondary" className="justify-start text-left h-auto py-2">
+                      {action}
+                    </Button>
+                  )) : <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg text-center">No suggestions.</p>}
+                </div>
+              )}
+            </div>
+          </div>
+        </DraggablePanel>
+      )}
 
-            {(coords || isLoadingAI) && (
-              <>
-                <div>
-                  <h3 className="font-semibold text-lg mb-2 flex items-center gap-2">
-                    <HelpCircle className="h-5 w-5 text-accent" />
-                    AI Explanation
-                  </h3>
-                  {isLoadingAI ? (
-                     <div className="space-y-2 p-4 bg-muted rounded-lg">
-                        <Skeleton className="h-4 w-full" />
-                        <Skeleton className="h-4 w-full" />
-                        <Skeleton className="h-4 w-3/4" />
-                     </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground p-4 bg-muted rounded-lg">{explanation}</p>
-                  )}
-                </div>
-                
-                <div>
-                  <h3 className="font-semibold text-lg mb-2">Suggested Actions</h3>
-                   {isLoadingAI ? (
-                     <div className="space-y-2">
-                       <Skeleton className="h-10 w-full" />
-                       <Skeleton className="h-10 w-full" />
-                     </div>
-                   ) : (
-                    <div className="flex flex-col gap-2">
-                      {actions && actions.length > 0 ? actions.map((action, index) => (
-                        <Button key={index} variant="outline" className="justify-start text-left h-auto py-2">
-                          {action}
-                        </Button>
-                      )) : <p className="text-sm text-muted-foreground p-4 bg-muted rounded-lg text-center">No suggested actions.</p>}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </aside>
     </main>
   );
 }
