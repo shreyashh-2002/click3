@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Button } from "@/components/ui/button";
-import { Info, Upload, Code } from 'lucide-react';
+import { Upload, Code } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
 import CodeGeneratorPanel from '@/components/code-generator-panel';
 
@@ -46,7 +46,7 @@ export default function Home() {
 
       <header className="absolute top-0 left-0 p-4 z-10 w-full flex justify-between items-start">
         <div className="flex items-center gap-2 p-2 bg-background/80 rounded-lg backdrop-blur-sm border border-border/50">
-            <Button onClick={() => setShowGenerator(c => !c)} variant={showGenerator ? "secondary" : "outline"} size="sm">
+            <Button onClick={() => setShowGenerator(c => !c)} variant={showGenerator ? "secondary" : "default"} size="sm">
                 <Code className="mr-2 h-4 w-4" />
                 Generator
             </Button>
