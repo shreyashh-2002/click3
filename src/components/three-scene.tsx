@@ -12,7 +12,6 @@ type ThreeSceneProps = {
 
 export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps) {
   const mountRef = useRef<HTMLDivElement>(null);
-  const [model, setModel] = useState<THREE.Object3D | null>(null);
 
   useEffect(() => {
     const currentMount = mountRef.current;
@@ -75,9 +74,44 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
     ground.receiveShadow = true;
     scene.add(ground);
 
-
     let currentModel: THREE.Object3D | null = null;
     let fallbackModel: THREE.Mesh | null = null;
+    let intersectionMarker: THREE.Mesh | null = null;
+
+    const setupModel = (model: THREE.Object3D) => {
+        model.traverse((child) => {
+            if ((child as THREE.Mesh).isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+            }
+        });
+
+        // Center and scale model
+        const box = new THREE.Box3().setFromObject(model);
+        const center = box.getCenter(new THREE.Vector3());
+        model.position.sub(center); // Center model at origin
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const scale = 3 / maxDim;
+        model.scale.set(scale, scale, scale);
+        
+        // Adjust position so the bottom of the model sits on the ground (y=0)
+        const newBox = new THREE.Box3().setFromObject(model);
+        model.position.y = -newBox.min.y;
+
+        if (currentModel) {
+            scene.remove(currentModel);
+        }
+        scene.add(model);
+        currentModel = model;
+        onCoordChange(null);
+        controls.autoRotate = false;
+        if(intersectionMarker) {
+            scene.remove(intersectionMarker);
+            intersectionMarker = null;
+        }
+    };
+
 
     const createFallbackModel = () => {
       const geometry = new THREE.TorusKnotGeometry(1, 0.3, 128, 16);
@@ -87,47 +121,15 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
         metalness: 0.9,
       });
       const mesh = new THREE.Mesh(geometry, material);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
       mesh.position.y = 1.5;
-      scene.add(mesh);
-      currentModel = mesh;
       fallbackModel = mesh;
-      setModel(mesh);
+      setupModel(mesh);
     };
 
     if (modelUrl) {
         const loader = new GLTFLoader();
         loader.load(modelUrl, (gltf) => {
-            if (currentModel) {
-                scene.remove(currentModel);
-            }
-            const loadedModel = gltf.scene;
-            
-            loadedModel.traverse((child) => {
-                if ((child as THREE.Mesh).isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
-                }
-            });
-
-            // Center and scale model
-            const box = new THREE.Box3().setFromObject(loadedModel);
-            const center = box.getCenter(new THREE.Vector3());
-            loadedModel.position.sub(center);
-            const size = box.getSize(new THREE.Vector3());
-            const maxDim = Math.max(size.x, size.y, size.z);
-            const scale = 3 / maxDim;
-            loadedModel.scale.set(scale, scale, scale);
-            
-            const newBox = new THREE.Box3().setFromObject(loadedModel);
-            loadedModel.position.y = -newBox.min.y;
-
-            scene.add(loadedModel);
-            currentModel = loadedModel;
-            setModel(loadedModel);
-            onCoordChange(null);
-            controls.autoRotate = false;
+            setupModel(gltf.scene);
         }, undefined, (error) => {
             console.error('An error happened while loading the model:', error);
             if (!fallbackModel) createFallbackModel();
@@ -140,7 +142,6 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
     // Raycaster for click detection
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
-    let intersectionMarker: THREE.Mesh | null = null;
 
     const onClick = (event: MouseEvent) => {
         if (!currentModel || mountRef.current?.querySelector(':hover')?.closest('aside, header, [role="dialog"], [role="alert"], #coords-panel, #ai-panel')) {
