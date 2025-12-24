@@ -79,25 +79,18 @@ const DraggablePanel = ({ id, title, icon, description, children, initialPositio
 
 // Function to map scene coordinates to your target coordinate system
 const mapCoordinates = (sceneCoords: THREE.Vector3): THREE.Vector3 => {
-    // Based on the example:
     // Scene: X: 15.8739, Y: 3.9051, Z: -5.1564
     // Target: X: 8.0, Y: 3, Z: -4
+    const sceneP = new THREE.Vector3(15.8739, 3.9051, -5.1564);
+    const targetP = new THREE.Vector3(8.0, 3, -4);
+
+    const offset = new THREE.Vector3().subVectors(targetP, sceneP);
     
-    // This is a simple offset calculation. If there's scaling involved,
-    // we would need more points to determine the transformation accurately.
-    const sceneP = { x: 15.8739, y: 3.9051, z: -5.1564 };
-    const targetP = { x: 8, y: 3, z: -4 };
+    // For now, we assume a simple linear offset. If there's scaling or rotation,
+    // we would need more reference points to define a full transformation matrix.
+    const mappedCoords = new THREE.Vector3().addVectors(sceneCoords, offset);
 
-    const offsetX = targetP.x - sceneP.x;
-    const offsetY = targetP.y - sceneP.y;
-    const offsetZ = targetP.z - sceneP.z;
-
-    // We assume a simple linear offset for now.
-    return new THREE.Vector3(
-        sceneCoords.x + offsetX,
-        sceneCoords.y + offsetY,
-        sceneCoords.z + offsetZ
-    );
+    return mappedCoords;
 };
 
 
@@ -113,7 +106,6 @@ export default function Home() {
 
   const handleCoordChange = useCallback((newCoords: THREE.Vector3 | null) => {
     if (newCoords) {
-        // Apply coordinate mapping here
         const mappedCoords = mapCoordinates(newCoords);
         setCoords(mappedCoords);
     } else {
