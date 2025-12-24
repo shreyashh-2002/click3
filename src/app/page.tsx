@@ -1,12 +1,14 @@
+
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Button } from "@/components/ui/button";
-import { Info, Upload, Orbit, Code } from 'lucide-react';
+import { Info, Upload, Orbit, Code, Target } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
 import CodeGeneratorPanel from '@/components/code-generator-panel';
 import DraggablePanel from '@/components/draggable-panel';
+import CalibrationPanel from '@/components/calibration-panel';
 
 
 export default function Home() {
@@ -27,6 +29,7 @@ export default function Home() {
     target2: new THREE.Vector3(12, 3, -6)
   });
   const [showGenerator, setShowGenerator] = useState(false);
+  const [showCalibration, setShowCalibration] = useState(false);
   
   const [windowSize, setWindowSize] = useState({width: 0, height: 0});
 
@@ -122,6 +125,10 @@ export default function Home() {
             </div>
         </div>
         <div className="flex items-center gap-2 p-2 bg-background/80 rounded-lg backdrop-blur-sm border border-border/50">
+            <Button onClick={() => setShowCalibration(c => !c)} variant={showCalibration ? "secondary" : "outline"} size="sm">
+                <Target className="mr-2 h-4 w-4" />
+                Calibration
+            </Button>
             <Button onClick={() => setShowGenerator(c => !c)} variant={showGenerator ? "secondary" : "outline"} size="sm">
                 <Code className="mr-2 h-4 w-4" />
                 Generator
@@ -144,6 +151,15 @@ export default function Home() {
         <CodeGeneratorPanel
           anchor={coords}
           initialPosition={{ x: 30, y: 120 }}
+        />
+      )}
+
+      {showCalibration && (
+        <CalibrationPanel 
+          calibration={calibration}
+          setCalibration={setCalibration}
+          lastSceneClick={sceneClick}
+          initialPosition={{ x: 30, y: (showGenerator ? 500 : 120) }}
         />
       )}
 
