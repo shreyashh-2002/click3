@@ -50,10 +50,7 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
     dirLight.castShadow = true;
     scene.add(dirLight);
 
-    // Grid and ground plane
-    const grid = new THREE.GridHelper(50, 50, 0x444444, 0x444444);
-    scene.add(grid);
-
+    // Ground plane
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(50, 50),
       new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 })
