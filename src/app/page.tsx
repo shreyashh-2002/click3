@@ -4,9 +4,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Button } from "@/components/ui/button";
-import { Upload, Code } from 'lucide-react';
+import { Upload, Code, SquareAsterisk } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
 import CodeGeneratorPanel from '@/components/code-generator-panel';
+import CornersGeneratorPanel from '@/components/corners-generator-panel';
 
 export default function Home() {
   const [sceneClick, setSceneClick] = useState<THREE.Vector3 | null>(null);
@@ -14,6 +15,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isClient, setIsClient] = useState(false);
   const [showGenerator, setShowGenerator] = useState(false);
+  const [showCornersGenerator, setShowCornersGenerator] = useState(false);
   
   useEffect(() => {
     setIsClient(true);
@@ -50,6 +52,10 @@ export default function Home() {
                 <Code className="mr-2 h-4 w-4" />
                 Generator
             </Button>
+            <Button onClick={() => setShowCornersGenerator(c => !c)} variant={showCornersGenerator ? "secondary" : "default"} size="sm">
+                <SquareAsterisk className="mr-2 h-4 w-4" />
+                Generator 2
+            </Button>
         </div>
         <div className="flex items-center gap-2 p-2 bg-background/80 rounded-lg backdrop-blur-sm border border-border/50">
             <input
@@ -70,6 +76,13 @@ export default function Home() {
         <CodeGeneratorPanel
           anchor={sceneClick}
           initialPosition={{ x: 30, y: 120 }}
+        />
+      )}
+
+      {showCornersGenerator && (
+        <CornersGeneratorPanel
+          lastClick={sceneClick}
+          initialPosition={{ x: 420, y: 120 }}
         />
       )}
 
