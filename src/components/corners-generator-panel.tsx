@@ -31,7 +31,7 @@ export default function CornersGeneratorPanel({ lastClick, initialPosition }: Co
 
     useEffect(() => {
         if (corners.length === 4) {
-            const code = `corners: [\n${corners.map(c => `  [${c.x.toFixed(4)}, 2.0, ${c.z.toFixed(4)}]`).join(',\n')}\n]`;
+            const code = `corners: [\n${corners.map(c => `  [${c.x.toFixed(4)}, 2.2, ${c.z.toFixed(4)}]`).join(',\n')}\n]`;
             setGeneratedCode(code);
         } else {
             setGeneratedCode('');
