@@ -1,20 +1,24 @@
 
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
+import type { MeshInfo } from './mesh-search-panel';
 
 
 type ThreeSceneProps = {
   onCoordChange: (coords: THREE.Vector3 | null) => void;
   modelUrl: string | null;
+  searchTerm: string;
+  onSearchResults: (results: MeshInfo[]) => void;
 };
 
-export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps) {
+export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSearchResults }: ThreeSceneProps) {
   const mountRef = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
 
   useEffect(() => {
     const currentMount = mountRef.current;
@@ -22,6 +26,7 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
 
     // Scene
     const scene = new THREE.Scene();
+    sceneRef.current = scene;
     scene.background = new THREE.Color(0x111111);
 
     // Camera
@@ -121,9 +126,8 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
     const mouse = new THREE.Vector2();
 
     const onClick = (event: MouseEvent) => {
-        // This querySelector checks if the click originated inside any of the UI panels.
         const clickedOnUi = (event.target as HTMLElement).closest(
-            `#${CSS.escape('code-generator-panel')}, #${CSS.escape('calibration-panel')}, #${CSS.escape('coords-panel')}, header`
+            `#${CSS.escape('code-generator-panel')}, #${CSS.escape('corners-generator-panel')}, #${CSS.escape('mesh-search-panel')}, header`
         );
         
         if (!currentModel || clickedOnUi) {
@@ -141,7 +145,6 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
             const point = intersects[0].point;
             onCoordChange(point.clone());
 
-            // Visual feedback
             if (!intersectionMarker) {
                 const markerGeometry = new THREE.SphereGeometry(0.2, 32, 32); 
                 const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x8b5cf6, transparent: true, opacity: 0.8 });
@@ -155,7 +158,6 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
 
     currentMount.addEventListener('click', onClick);
 
-    // Animation loop
     let animationFrameId: number;
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
@@ -164,7 +166,6 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
     };
     animate();
 
-    // Handle resize
     const handleResize = () => {
       if (!currentMount) return;
       camera.aspect = currentMount.clientWidth / currentMount.clientHeight;
@@ -207,10 +208,31 @@ export default function ThreeScene({ onCoordChange, modelUrl }: ThreeSceneProps)
       controls.dispose();
       renderer.dispose();
       ktx2Loader.dispose();
+      sceneRef.current = null;
     };
   }, [onCoordChange, modelUrl]);
+  
+  useEffect(() => {
+    if (!searchTerm || !sceneRef.current) {
+        if (searchTerm === '') onSearchResults([]);
+        return;
+    };
+
+    const scene = sceneRef.current;
+    const results: MeshInfo[] = [];
+    scene.traverse((object) => {
+        if (object instanceof THREE.Mesh && object.name.toLowerCase().startsWith(searchTerm.toLowerCase())) {
+            const box = new THREE.Box3().setFromObject(object);
+            const center = box.getCenter(new THREE.Vector3());
+            results.push({
+                name: object.name,
+                center,
+            });
+        }
+    });
+    onSearchResults(results);
+}, [searchTerm, onSearchResults]);
+
 
   return <div ref={mountRef} className="w-full h-full absolute top-0 left-0 z-0" />;
 }
-
-    

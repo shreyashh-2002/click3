@@ -4,10 +4,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Button } from "@/components/ui/button";
-import { Upload, Code, SquareAsterisk } from 'lucide-react';
+import { Upload, Code, SquareAsterisk, Search } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
 import CodeGeneratorPanel from '@/components/code-generator-panel';
 import CornersGeneratorPanel from '@/components/corners-generator-panel';
+import MeshSearchPanel, { type MeshInfo } from '@/components/mesh-search-panel';
 
 export default function Home() {
   const [sceneClick, setSceneClick] = useState<THREE.Vector3 | null>(null);
@@ -16,7 +17,11 @@ export default function Home() {
   const [isClient, setIsClient] = useState(false);
   const [showGenerator, setShowGenerator] = useState(false);
   const [showCornersGenerator, setShowCornersGenerator] = useState(false);
+  const [showMeshSearch, setShowMeshSearch] = useState(false);
   
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<MeshInfo[]>([]);
+
   useEffect(() => {
     setIsClient(true);
   }, []);
@@ -37,6 +42,14 @@ export default function Home() {
   const handleUploadClick = () => {
     fileInputRef.current?.click();
   };
+  
+  const handleSearch = (term: string) => {
+    setSearchTerm(term);
+  };
+  
+  const handleSearchResults = useCallback((results: MeshInfo[]) => {
+    setSearchResults(results);
+  }, []);
 
   if (!isClient) {
     return null;
@@ -44,7 +57,12 @@ export default function Home() {
 
   return (
     <main className="h-screen w-screen overflow-hidden bg-background text-foreground">
-      <ThreeScene onCoordChange={handleCoordChange} modelUrl={modelUrl} />
+      <ThreeScene 
+        onCoordChange={handleCoordChange} 
+        modelUrl={modelUrl}
+        searchTerm={searchTerm}
+        onSearchResults={handleSearchResults}
+      />
 
       <header className="absolute top-0 left-0 p-4 z-10 w-full flex justify-between items-start">
         <div className="flex items-center gap-2 p-2 bg-background/80 rounded-lg backdrop-blur-sm border border-border/50">
@@ -55,6 +73,10 @@ export default function Home() {
             <Button onClick={() => setShowCornersGenerator(c => !c)} variant={showCornersGenerator ? "secondary" : "default"} size="sm">
                 <SquareAsterisk className="mr-2 h-4 w-4" />
                 Generator 2
+            </Button>
+            <Button onClick={() => setShowMeshSearch(c => !c)} variant={showMeshSearch ? "secondary" : "default"} size="sm">
+                <Search className="mr-2 h-4 w-4" />
+                Generator 3
             </Button>
         </div>
         <div className="flex items-center gap-2 p-2 bg-background/80 rounded-lg backdrop-blur-sm border border-border/50">
@@ -83,6 +105,14 @@ export default function Home() {
         <CornersGeneratorPanel
           lastClick={sceneClick}
           initialPosition={{ x: 420, y: 120 }}
+        />
+      )}
+      
+      {showMeshSearch && (
+        <MeshSearchPanel
+          onSearch={handleSearch}
+          results={searchResults}
+          initialPosition={{ x: 810, y: 120 }}
         />
       )}
 
