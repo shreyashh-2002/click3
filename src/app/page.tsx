@@ -4,11 +4,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Button } from "@/components/ui/button";
-import { Upload, Code, SquareAsterisk, Search } from 'lucide-react';
+import { Upload, Code, SquareAsterisk, Search, Filter } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
 import CodeGeneratorPanel from '@/components/code-generator-panel';
 import CornersGeneratorPanel from '@/components/corners-generator-panel';
 import MeshSearchPanel, { type MeshInfo } from '@/components/mesh-search-panel';
+import MeshFilterPanel from '@/components/mesh-filter-panel';
 
 export default function Home() {
   const [sceneClick, setSceneClick] = useState<THREE.Vector3 | null>(null);
@@ -18,9 +19,13 @@ export default function Home() {
   const [showGenerator, setShowGenerator] = useState(false);
   const [showCornersGenerator, setShowCornersGenerator] = useState(false);
   const [showMeshSearch, setShowMeshSearch] = useState(false);
+  const [showMeshFilter, setShowMeshFilter] = useState(false);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<MeshInfo[]>([]);
+
+  const [yFilter, setYFilter] = useState<{y: number, enabled: boolean} | null>(null);
+  const [yFilterResults, setYFilterResults] = useState<string[]>([]);
 
   useEffect(() => {
     setIsClient(true);
@@ -51,6 +56,15 @@ export default function Home() {
     setSearchResults(results);
   }, []);
 
+  const handleFilter = (y: number) => {
+    setYFilter({ y, enabled: true });
+  };
+
+  const handleFilterResults = useCallback((results: string[]) => {
+    setYFilterResults(results);
+    setYFilter(f => f ? { ...f, enabled: false } : null); // Reset trigger
+  }, []);
+
   if (!isClient) {
     return null;
   }
@@ -62,6 +76,8 @@ export default function Home() {
         modelUrl={modelUrl}
         searchTerm={searchTerm}
         onSearchResults={handleSearchResults}
+        yFilter={yFilter}
+        onYFilterResults={handleFilterResults}
       />
 
       <header className="absolute top-0 left-0 p-4 z-10 w-full flex justify-between items-start">
@@ -77,6 +93,10 @@ export default function Home() {
             <Button onClick={() => setShowMeshSearch(c => !c)} variant={showMeshSearch ? "secondary" : "default"} size="sm">
                 <Search className="mr-2 h-4 w-4" />
                 Generator 3
+            </Button>
+            <Button onClick={() => setShowMeshFilter(c => !c)} variant={showMeshFilter ? "secondary" : "default"} size="sm">
+                <Filter className="mr-2 h-4 w-4" />
+                Generator 4
             </Button>
         </div>
         <div className="flex items-center gap-2 p-2 bg-background/80 rounded-lg backdrop-blur-sm border border-border/50">
@@ -113,6 +133,14 @@ export default function Home() {
           onSearch={handleSearch}
           results={searchResults}
           initialPosition={{ x: 810, y: 120 }}
+        />
+      )}
+
+      {showMeshFilter && (
+        <MeshFilterPanel
+          onFilter={handleFilter}
+          results={yFilterResults}
+          initialPosition={{ x: 1200, y: 120 }}
         />
       )}
 

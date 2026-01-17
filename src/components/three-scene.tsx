@@ -14,9 +14,11 @@ type ThreeSceneProps = {
   modelUrl: string | null;
   searchTerm: string;
   onSearchResults: (results: MeshInfo[]) => void;
+  yFilter: { y: number; enabled: boolean } | null;
+  onYFilterResults: (results: string[]) => void;
 };
 
-export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSearchResults }: ThreeSceneProps) {
+export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSearchResults, yFilter, onYFilterResults }: ThreeSceneProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
 
@@ -127,7 +129,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSear
 
     const onClick = (event: MouseEvent) => {
         const clickedOnUi = (event.target as HTMLElement).closest(
-            `#${CSS.escape('code-generator-panel')}, #${CSS.escape('corners-generator-panel')}, #${CSS.escape('mesh-search-panel')}, header`
+            `#${CSS.escape('code-generator-panel')}, #${CSS.escape('corners-generator-panel')}, #${CSS.escape('mesh-search-panel')}, #${CSS.escape('mesh-filter-panel')}, header`
         );
         
         if (!currentModel || clickedOnUi) {
@@ -232,6 +234,25 @@ export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSear
     });
     onSearchResults(results);
 }, [searchTerm, onSearchResults]);
+
+useEffect(() => {
+    if (!yFilter || !yFilter.enabled || !sceneRef.current) {
+        return;
+    };
+
+    const scene = sceneRef.current;
+    const results: string[] = [];
+    scene.traverse((object) => {
+        if (object instanceof THREE.Mesh && object.name) {
+            const box = new THREE.Box3().setFromObject(object);
+            // use the mesh's minimum y position to determine if it's above the threshold
+            if (box.min.y > yFilter.y) {
+                results.push(object.name);
+            }
+        }
+    });
+    onYFilterResults(results);
+}, [yFilter, onYFilterResults]);
 
 
   return <div ref={mountRef} className="w-full h-full absolute top-0 left-0 z-0" />;
