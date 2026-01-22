@@ -242,17 +242,26 @@ useEffect(() => {
 
     const scene = sceneRef.current;
     const results: string[] = [];
-
     let filterBox: THREE.Box3 | null = null;
+
     if (yFilter.corners) {
         try {
-            // Sanitize input: it might come with variable names or comments.
-            // A simple regex to find the array structure.
-            const cornerMatch = yFilter.corners.match(/(\[.*\])/s);
-            if (cornerMatch) {
-                const parsedCorners = JSON.parse(cornerMatch[0]);
+            let jsonString = yFilter.corners;
+            const startIndex = jsonString.indexOf('[');
+            const endIndex = jsonString.lastIndexOf(']');
+
+            if (startIndex !== -1 && endIndex > startIndex) {
+                jsonString = jsonString.substring(startIndex, endIndex + 1);
+                const parsedCorners = JSON.parse(jsonString);
+                
                 if (Array.isArray(parsedCorners) && parsedCorners.length > 0) {
-                    const points = parsedCorners.map(p => new THREE.Vector3(p[0], p[1], p[2]));
+                    const points = parsedCorners.map(p => {
+                        if (Array.isArray(p) && p.length >= 3) {
+                            return new THREE.Vector3(p[0], p[1], p[2]);
+                        }
+                        return null;
+                    }).filter((p): p is THREE.Vector3 => p !== null);
+
                     if (points.length > 0) {
                         filterBox = new THREE.Box3().setFromPoints(points);
                     }
@@ -263,7 +272,6 @@ useEffect(() => {
             // Silently fail and proceed without the area filter.
         }
     }
-
 
     scene.traverse((object) => {
         if (object instanceof THREE.Mesh && object.name) {
