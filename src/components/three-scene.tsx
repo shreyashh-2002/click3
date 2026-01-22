@@ -264,6 +264,9 @@ useEffect(() => {
 
                     if (points.length > 0) {
                         filterBox = new THREE.Box3().setFromPoints(points);
+                        // Make the box infinitely tall to only check X and Z bounds
+                        filterBox.min.y = -Infinity;
+                        filterBox.max.y = Infinity;
                     }
                 }
             }
