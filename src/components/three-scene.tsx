@@ -14,7 +14,7 @@ type ThreeSceneProps = {
   modelUrl: string | null;
   searchTerm: string;
   onSearchResults: (results: MeshInfo[]) => void;
-  yFilter: { y: number; enabled: boolean } | null;
+  yFilter: { y: number; corners?: string; enabled: boolean } | null;
   onYFilterResults: (results: string[]) => void;
 };
 
@@ -242,11 +242,45 @@ useEffect(() => {
 
     const scene = sceneRef.current;
     const results: string[] = [];
+
+    let filterBox: THREE.Box3 | null = null;
+    if (yFilter.corners) {
+        try {
+            // Sanitize input: it might come with variable names or comments.
+            // A simple regex to find the array structure.
+            const cornerMatch = yFilter.corners.match(/(\[.*\])/s);
+            if (cornerMatch) {
+                const parsedCorners = JSON.parse(cornerMatch[0]);
+                if (Array.isArray(parsedCorners) && parsedCorners.length > 0) {
+                    const points = parsedCorners.map(p => new THREE.Vector3(p[0], p[1], p[2]));
+                    if (points.length > 0) {
+                        filterBox = new THREE.Box3().setFromPoints(points);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Could not parse corners. Ensure it's a valid JSON array string.", e);
+            // Silently fail and proceed without the area filter.
+        }
+    }
+
+
     scene.traverse((object) => {
         if (object instanceof THREE.Mesh && object.name) {
-            const box = new THREE.Box3().setFromObject(object);
-            // use the mesh's minimum y position to determine if it's above the threshold
-            if (box.min.y > yFilter.y) {
+            const meshBox = new THREE.Box3().setFromObject(object);
+            
+            if (meshBox.isEmpty()) {
+                return;
+            }
+
+            const yCondition = meshBox.min.y > yFilter.y;
+            
+            let areaCondition = true;
+            if (filterBox) {
+                areaCondition = filterBox.intersectsBox(meshBox);
+            }
+
+            if (yCondition && areaCondition) {
                 results.push(object.name);
             }
         }

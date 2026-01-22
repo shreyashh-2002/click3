@@ -24,7 +24,7 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<MeshInfo[]>([]);
 
-  const [yFilter, setYFilter] = useState<{y: number, enabled: boolean} | null>(null);
+  const [yFilter, setYFilter] = useState<{y: number, corners?: string, enabled: boolean} | null>(null);
   const [yFilterResults, setYFilterResults] = useState<string[]>([]);
 
   useEffect(() => {
@@ -56,8 +56,8 @@ export default function Home() {
     setSearchResults(results);
   }, []);
 
-  const handleFilter = (y: number) => {
-    setYFilter({ y, enabled: true });
+  const handleFilter = (params: { y: number, corners?: string }) => {
+    setYFilter({ ...params, enabled: true });
   };
 
   const handleFilterResults = useCallback((results: string[]) => {
