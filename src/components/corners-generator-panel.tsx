@@ -23,7 +23,7 @@ export default function CornersGeneratorPanel({ lastClick, initialPosition }: Co
     useEffect(() => {
         // Only run on updates, not on initial mount, to avoid adding a stale click.
         if (isMounted.current) {
-            if (lastClick && corners.length < 4) {
+            if (lastClick && corners.length < 8) {
                 // Avoid adding the same point twice on re-renders
                 if (corners.length > 0 && corners[corners.length - 1].equals(lastClick)) {
                     return;
@@ -36,7 +36,7 @@ export default function CornersGeneratorPanel({ lastClick, initialPosition }: Co
     }, [lastClick]);
 
     useEffect(() => {
-        if (corners.length === 4) {
+        if (corners.length === 4 || corners.length === 6 || corners.length === 8) {
             const code = `corners: [\n${corners.map(c => `  [${c.x.toFixed(4)}, 2.2, ${c.z.toFixed(4)}]`).join(',\n')}\n]`;
             setGeneratedCode(code);
         } else {
@@ -65,13 +65,22 @@ export default function CornersGeneratorPanel({ lastClick, initialPosition }: Co
 
     const getHelperText = () => {
         const len = corners.length;
-        if (len === 4) {
-            return `4 points selected. Code generated below.`;
+        if (len >= 8) {
+            return `Maximum of 8 points reached.`;
+        }
+        if (len === 4 || len === 6) {
+            return `${len} points selected. Code generated. Click more points to continue.`;
+        }
+        if (len > 6) {
+            return `Click ${8 - len} more for an 8-point array.`;
+        }
+        if (len > 4) {
+            return `Click ${6 - len} more for a 6-point array.`;
         }
         if (len < 4) {
             return `Click ${4 - len} more to make a 4-point array.`;
         }
-        return `Maximum of 4 points reached.`;
+        return `Select points on the model.`;
     };
 
     return (
@@ -79,7 +88,7 @@ export default function CornersGeneratorPanel({ lastClick, initialPosition }: Co
             id="corners-generator-panel"
             title="Corners Generator"
             icon={<SquareAsterisk className="h-5 w-5 text-primary" />}
-            description="Select 4 points to generate a corners array."
+            description="Select 4, 6 or 8 points to generate a corners array."
             initialPosition={initialPosition}
             className="w-96"
         >
@@ -95,9 +104,9 @@ export default function CornersGeneratorPanel({ lastClick, initialPosition }: Co
                     <div className="relative">
                         <Textarea
                             readOnly
-                            value={generatedCode || `[${corners.length}/4] points selected...`}
+                            value={generatedCode || `[${corners.length}/8] points selected...`}
                             className="font-mono text-xs h-32 resize-none bg-muted"
-                            placeholder="Click on the model to select 4 corner points..."
+                            placeholder="Click on the model to select 4, 6 or 8 points..."
                         />
                         {generatedCode && (
                             <Button size="icon" variant="ghost" className="absolute top-2 right-2 h-7 w-7" onClick={handleCopy}>
