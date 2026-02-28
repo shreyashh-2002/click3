@@ -22,7 +22,17 @@ export default function MeshExtractionPanel({ onExtract, results, initialPositio
 
     const handleExtract = () => {
         let corners: number[][] = [];
+        const threshold = parseFloat(yValue);
         
+        if (isNaN(threshold)) {
+            toast({
+                variant: 'destructive',
+                title: "Invalid Y Threshold",
+                description: "Please enter a valid number for the Y-axis.",
+            });
+            return;
+        }
+
         if (!cornersInput.trim()) {
             toast({
                 variant: 'destructive',
@@ -36,20 +46,26 @@ export default function MeshExtractionPanel({ onExtract, results, initialPositio
             // Robust parsing for common JS/JSON array formats including 'corners: [...]'
             let cleaned = cornersInput.trim();
             
-            // Remove 'corners:' label if present
-            if (cleaned.startsWith('corners:')) {
-                cleaned = cleaned.replace(/^corners:\s*/, '');
+            // Remove 'corners:' label or 'const corners =' if present
+            cleaned = cleaned.replace(/^(const|let|var)\s+\w+\s*=\s*/, '');
+            cleaned = cleaned.replace(/^corners:\s*/, '');
+            
+            // Clean up trailing commas and potential comments
+            cleaned = cleaned.replace(/\/\/.*/g, ''); // Remove line comments
+            cleaned = cleaned.replace(/,\s*\]/g, ']'); // Remove trailing commas in arrays
+            
+            // Basic check if it's bracketed
+            if (!cleaned.startsWith('[')) {
+                throw new Error("Invalid format");
             }
-            
-            // Basic cleanup for JSON parsing
-            cleaned = cleaned.replace(/,\s*\]/g, ']'); // Remove trailing commas
-            
-            // Evaluate if it looks like a JS array but isn't strict JSON
-            // Using JSON.parse is safer than eval
-            corners = JSON.parse(cleaned);
+
+            // Using JSON.parse for standard JSON, but we might need a safer eval-like approach for JS objects
+            // For safety in this context, we try JSON.parse after replacing single quotes
+            const normalized = cleaned.replace(/'/g, '"');
+            corners = JSON.parse(normalized);
 
             if (!Array.isArray(corners) || corners.length < 3) {
-                throw new Error("Invalid array structure");
+                throw new Error("Invalid array structure. Need at least 3 points.");
             }
         } catch (e) {
             toast({
@@ -61,8 +77,13 @@ export default function MeshExtractionPanel({ onExtract, results, initialPositio
         }
 
         onExtract({
-            yThreshold: parseFloat(yValue),
+            yThreshold: threshold,
             corners
+        });
+        
+        toast({
+            title: "Extraction Started",
+            description: `Searching for meshes above Y=${threshold}...`,
         });
     };
 
@@ -84,7 +105,7 @@ export default function MeshExtractionPanel({ onExtract, results, initialPositio
         >
             <div className="space-y-4">
                 <div className="space-y-2">
-                    <Label>Y-Axis Threshold (Greater Than)</Label>
+                    <Label>Y-Axis Threshold (Meshes &gt; Y)</Label>
                     <Input
                         type="number"
                         step="0.1"
@@ -95,7 +116,7 @@ export default function MeshExtractionPanel({ onExtract, results, initialPositio
                 </div>
                 
                 <div className="space-y-2">
-                    <Label>Boundary Corners Array</Label>
+                    <Label>Boundary Corners Array (XZ Plane)</Label>
                     <Textarea
                         value={cornersInput}
                         onChange={(e) => setCornersInput(e.target.value)}
@@ -110,13 +131,16 @@ export default function MeshExtractionPanel({ onExtract, results, initialPositio
                 </Button>
 
                 <div className="relative">
+                    <div className="flex justify-between items-center mb-1">
+                        <Label className="text-[10px] uppercase text-muted-foreground">Results</Label>
+                    </div>
                     <Textarea
                         readOnly
                         value={results.length > 0 ? JSON.stringify(results, null, 2) : "No meshes extracted yet."}
                         className="font-mono text-[10px] h-48 resize-none bg-muted"
                     />
                     {results.length > 0 && (
-                        <Button size="icon" variant="ghost" className="absolute top-2 right-2 h-7 w-7" onClick={handleCopy}>
+                        <Button size="icon" variant="ghost" className="absolute top-8 right-2 h-7 w-7" onClick={handleCopy}>
                             <Copy className="h-4 w-4" />
                         </Button>
                     )}

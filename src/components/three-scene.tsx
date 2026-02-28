@@ -203,12 +203,20 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
 
     modelRef.current.traverse((object) => {
       if (object instanceof THREE.Mesh) {
+        // Get the world position of the object
         const worldPos = new THREE.Vector3();
         object.getWorldPosition(worldPos);
 
-        // Filter: Above Y Threshold AND Inside Horizontal Boundary
-        if (worldPos.y > yThreshold) {
-          if (corners.length === 0 || isInside(worldPos.x, worldPos.z, corners)) {
+        // For groups or nested objects, the world position of the center of the geometry 
+        // is often more meaningful for spatial selection.
+        const box = new THREE.Box3().setFromObject(object);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+
+        // Filter: Strictly ABOVE Y Threshold AND Inside Horizontal Boundary
+        // We use the center of the mesh for more accurate spatial grouping
+        if (center.y > yThreshold) {
+          if (corners.length === 0 || isInside(center.x, center.z, corners)) {
             results.push(object.name || `Unnamed Mesh (${object.uuid.slice(0, 5)})`);
           }
         }
