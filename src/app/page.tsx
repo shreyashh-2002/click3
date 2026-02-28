@@ -1,13 +1,15 @@
+
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Button } from "@/components/ui/button";
-import { Upload, SquareAsterisk, Search, Layout, ChevronRight, Database } from 'lucide-react';
+import { Upload, SquareAsterisk, Search, Layout, ChevronRight, Database, BookOpen, Wind, Map } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
 import CornersGeneratorPanel from '@/components/corners-generator-panel';
 import MeshSearchPanel, { type MeshInfo } from '@/components/mesh-search-panel';
 import OrdMapperPanel from '@/components/ord-mapper-panel';
+import DraggablePanel from '@/components/draggable-panel';
 import {
   Sidebar,
   SidebarContent,
@@ -42,6 +44,9 @@ export default function Home() {
   const [showCornersGenerator, setShowCornersGenerator] = useState(false);
   const [showMeshSearch, setShowMeshSearch] = useState(false);
   const [showOrdMapper, setShowOrdMapper] = useState(false);
+  const [showLms, setShowLms] = useState(false);
+  const [showHvac, setShowHvac] = useState(false);
+  const [showFloorLayout, setShowFloorLayout] = useState(false);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<MeshInfo[]>([]);
@@ -99,6 +104,7 @@ export default function Home() {
               <SidebarGroupLabel>Menu</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
+                  {/* UI SECTION */}
                   <SidebarMenuItem>
                     <Collapsible asChild defaultOpen className="group/collapsible">
                       <div>
@@ -135,6 +141,7 @@ export default function Home() {
                     </Collapsible>
                   </SidebarMenuItem>
 
+                  {/* ORD SECTION */}
                   <SidebarMenuItem>
                     <SidebarMenuButton 
                       onClick={() => setShowOrdMapper(!showOrdMapper)}
@@ -144,6 +151,52 @@ export default function Home() {
                       <Database className="size-4" />
                       <span>ORD</span>
                     </SidebarMenuButton>
+                  </SidebarMenuItem>
+
+                  {/* API SECTION */}
+                  <SidebarMenuItem>
+                    <Collapsible asChild className="group/collapsible">
+                      <div>
+                        <CollapsibleTrigger asChild>
+                          <SidebarMenuButton tooltip="API Integrations">
+                            <Database className="size-4" />
+                            <span>API</span>
+                            <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                          </SidebarMenuButton>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <SidebarMenuSub>
+                            <SidebarMenuSubItem>
+                              <SidebarMenuSubButton 
+                                onClick={() => setShowLms(!showLms)}
+                                isActive={showLms}
+                              >
+                                <BookOpen className="size-4 mr-2" />
+                                <span>LMS</span>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                            <SidebarMenuSubItem>
+                              <SidebarMenuSubButton 
+                                onClick={() => setShowHvac(!showHvac)}
+                                isActive={showHvac}
+                              >
+                                <Wind className="size-4 mr-2" />
+                                <span>HVAC</span>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                            <SidebarMenuSubItem>
+                              <SidebarMenuSubButton 
+                                onClick={() => setShowFloorLayout(!showFloorLayout)}
+                                isActive={showFloorLayout}
+                              >
+                                <Map className="size-4 mr-2" />
+                                <span>Floor Layout</span>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          </SidebarMenuSub>
+                        </CollapsibleContent>
+                      </div>
+                    </Collapsible>
                   </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
@@ -189,6 +242,49 @@ export default function Home() {
               <OrdMapperPanel
                 initialPosition={{ x: 20, y: 420 }}
               />
+            )}
+
+            {/* API PLACEHOLDER PANELS */}
+            {showLms && (
+              <DraggablePanel
+                id="lms-panel"
+                title="LMS Integration"
+                icon={<BookOpen className="h-5 w-5 text-primary" />}
+                description="Connect to Learning Management Systems."
+                initialPosition={{ x: 820, y: 20 }}
+              >
+                <div className="p-4 bg-muted rounded-md text-sm">
+                  Placeholder for LMS data visualization and API settings.
+                </div>
+              </DraggablePanel>
+            )}
+
+            {showHvac && (
+              <DraggablePanel
+                id="hvac-panel"
+                title="HVAC Analysis"
+                icon={<Wind className="h-5 w-5 text-primary" />}
+                description="Real-time HVAC performance monitoring."
+                initialPosition={{ x: 820, y: 220 }}
+              >
+                <div className="p-4 bg-muted rounded-md text-sm">
+                  Placeholder for Airflow and Temperature analysis charts.
+                </div>
+              </DraggablePanel>
+            )}
+
+            {showFloorLayout && (
+              <DraggablePanel
+                id="floor-layout-panel"
+                title="Floor Layout"
+                icon={<Map className="h-5 w-5 text-primary" />}
+                description="Spatial mapping and zone configuration."
+                initialPosition={{ x: 820, y: 420 }}
+              >
+                <div className="p-4 bg-muted rounded-md text-sm">
+                  Placeholder for floor-plan synchronization tools.
+                </div>
+              </DraggablePanel>
             )}
 
             {sceneClick && (
