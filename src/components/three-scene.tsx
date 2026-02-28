@@ -23,6 +23,8 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const modelRef = useRef<THREE.Object3D | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
 
   useEffect(() => {
     const currentMount = mountRef.current;
@@ -36,6 +38,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     // Initialize Camera
     const camera = new THREE.PerspectiveCamera(50, currentMount.clientWidth / currentMount.clientHeight, 0.1, 5000);
     camera.position.set(-5.58, 44.30, 74.58);
+    cameraRef.current = camera;
 
     // Initialize Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -45,6 +48,19 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.2;
     currentMount.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
+
+    // Handle Resize
+    const resizeObserver = new ResizeObserver(() => {
+      if (!currentMount || !cameraRef.current || !rendererRef.current) return;
+      const width = currentMount.clientWidth;
+      const height = currentMount.clientHeight;
+      
+      cameraRef.current.aspect = width / height;
+      cameraRef.current.updateProjectionMatrix();
+      rendererRef.current.setSize(width, height);
+    });
+    resizeObserver.observe(currentMount);
 
     // Setup Loaders
     const dracoLoader = new DRACOLoader();
@@ -99,12 +115,9 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
       gltfLoader.load(
         modelUrl, 
         (gltf) => {
-          console.log("Model loaded successfully");
           setupModel(gltf.scene);
         }, 
-        (xhr) => {
-          console.log((xhr.loaded / xhr.total * 100) + '% loaded');
-        },
+        undefined,
         (error) => {
           console.error("Error loading model:", error);
           createFallback();
@@ -156,6 +169,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     return () => {
       cancelAnimationFrame(frameId);
       currentMount.removeEventListener('click', onClick);
+      resizeObserver.disconnect();
       renderer.dispose();
       dracoLoader.dispose();
       ktx2Loader.dispose();
