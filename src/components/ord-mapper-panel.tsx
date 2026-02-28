@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Zap, Loader2, Code, Copy, Check, Filter, Globe, Search } from 'lucide-react';
+import { Database, Zap, Loader2, Code, Copy, Filter, Globe, Search, ShieldCheck } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { discoverAllOrds } from '@/app/actions/niagara';
@@ -54,15 +54,23 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
         setIsFetching(true);
         try {
             const discovered = await discoverAllOrds(startPath);
-            setRawOrds(discovered.join('\n'));
-            toast({
-                title: "Discovery Complete",
-                description: `Found ${discovered.length} points at ${startPath}`,
-            });
+            if (discovered.length === 0) {
+                toast({
+                    title: "No points found",
+                    description: "Station connected but found no points at this path.",
+                    variant: "default"
+                });
+            } else {
+                setRawOrds(discovered.join('\n'));
+                toast({
+                    title: "Discovery Complete",
+                    description: `Successfully extracted ${discovered.length} ORDs from nested folders.`,
+                });
+            }
         } catch (error: any) {
             toast({
                 title: "Connection Failed",
-                description: error.message || "Check your .env settings and station status.",
+                description: error.message || "Check your .env settings and station connectivity.",
                 variant: "destructive"
             });
         } finally {
@@ -74,8 +82,8 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
         const ordArray = rawOrds.split('\n').map(s => s.trim()).filter(Boolean);
         if (ordArray.length === 0) {
             toast({
-                title: "No ORDs found",
-                description: "Paste ORDs or use Auto-Discover to get started.",
+                title: "No ORDs provided",
+                description: "Paste ORDs or use the Discovery tool to fetch them.",
                 variant: "destructive"
             });
             return;
@@ -83,7 +91,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
 
         setIsLoading(true);
         
-        // Manual Parsing Logic (No AI)
+        // Manual Parsing Logic
         setTimeout(() => {
             const roomsMap: Record<string, Point[]> = {};
 
@@ -92,6 +100,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 const pointName = parts[parts.length - 1] || 'Unknown';
                 let roomName = 'Global/Unassigned';
                 
+                // Identify room/equipment from the parent segment
                 if (parts.length > 1) {
                     roomName = parts[parts.length - 2];
                 }
@@ -113,9 +122,9 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 points
             }));
 
-            const scriptPreview = `/**\n * Auto-generated Niagara Script\n */\n\npublic void onExecute() {\n${
+            const scriptPreview = `/**\n * Auto-generated Niagara Script\n * Room: {{RoomName}}\n */\n\npublic void onExecute() {\n${
                 rooms.map(r => 
-                    `  // ${r.roomName}\n` + 
+                    `  // Points for ${r.roomName}\n` + 
                     r.points.map(p => `  BStatusNumeric ${p.label.replace(/\s+/g, '')} = (BStatusNumeric) get("${p.ord}");`).join('\n')
                 ).join('\n\n')
             }\n}`;
@@ -124,17 +133,17 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             setIsLoading(false);
             
             toast({
-                title: "Mapping Complete",
-                description: "Points have been grouped and categorized.",
+                title: "Mapping Successful",
+                description: `Grouped points into ${rooms.length} zones.`,
             });
-        }, 500);
+        }, 300);
     };
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
         toast({
             title: "Copied!",
-            description: "Copied to clipboard.",
+            description: "Content copied to clipboard.",
         });
     };
 
@@ -143,20 +152,25 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             id="ord-mapper-panel"
             title="ORD Mapper"
             icon={<Database className="h-5 w-5 text-primary" />}
-            description="Secure Niagara point discovery & categorization."
+            description="Deep discovery and automatic point mapping tool."
             initialPosition={initialPosition}
             className="w-[450px]"
         >
             <div className="space-y-4">
+                <div className="flex items-center gap-2 p-2 bg-primary/5 rounded border border-primary/20 text-[10px] text-primary">
+                    <ShieldCheck className="h-3 w-3" />
+                    <span>Using secure Read-Only server proxy via .env configuration.</span>
+                </div>
+
                 <Tabs defaultValue="discovery" className="w-full">
                     <TabsList className="grid w-full grid-cols-2">
                         <TabsTrigger value="discovery">Discovery</TabsTrigger>
-                        <TabsTrigger value="manual">Manual Paste</TabsTrigger>
+                        <TabsTrigger value="manual">Manual</TabsTrigger>
                     </TabsList>
                     
                     <TabsContent value="discovery" className="space-y-3 pt-2">
                         <div className="space-y-1.5">
-                            <Label htmlFor="start-path">Start Discovery Path</Label>
+                            <Label htmlFor="start-path">Discovery Root Path</Label>
                             <div className="flex gap-2">
                                 <Input 
                                     id="start-path"
@@ -169,11 +183,12 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                                     variant="secondary" 
                                     onClick={handleAutoDiscover} 
                                     disabled={isFetching}
+                                    title="Start recursive extraction"
                                 >
                                     {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
                                 </Button>
                             </div>
-                            <p className="text-[10px] text-muted-foreground">Uses secure server-side proxy for read-only access.</p>
+                            <p className="text-[10px] text-muted-foreground italic">Recursive crawler opens all nested folders to find points.</p>
                         </div>
                     </TabsContent>
 
@@ -181,22 +196,22 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                         <Textarea
                             value={rawOrds}
                             onChange={(e) => setRawOrds(e.target.value)}
-                            placeholder="Paste raw Niagara ORDs here (one per line)..."
+                            placeholder="Paste raw ORDs (one per line)..."
                             className="h-24 font-mono text-xs resize-none bg-muted/50"
                         />
                     </TabsContent>
                 </Tabs>
 
-                <Button onClick={handleProcess} disabled={isLoading || !rawOrds} className="w-full">
+                <Button onClick={handleProcess} disabled={isLoading || !rawOrds} className="w-full shadow-lg">
                     {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Filter className="mr-2 h-4 w-4" />}
-                    Analyze & Map Points
+                    Map & Group Points
                 </Button>
 
                 {mapping && (
                     <Tabs defaultValue="mapped" className="w-full mt-4">
                         <TabsList className="grid w-full grid-cols-2">
-                            <TabsTrigger value="mapped">Mapped Points</TabsTrigger>
-                            <TabsTrigger value="script">Script Preview</TabsTrigger>
+                            <TabsTrigger value="mapped">Mapped Zones</TabsTrigger>
+                            <TabsTrigger value="script">Script</TabsTrigger>
                         </TabsList>
                         
                         <TabsContent value="mapped" className="mt-4 space-y-4 max-h-80 overflow-auto pr-2 scrollbar-thin scrollbar-thumb-primary">
