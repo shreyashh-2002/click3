@@ -3,10 +3,13 @@
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Zap, Loader2, Code, Copy, Check, Filter } from 'lucide-react';
+import { Database, Zap, Loader2, Code, Copy, Check, Filter, Globe, Search } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { discoverAllOrds } from '@/app/actions/niagara';
 
 type Point = {
     ord: string;
@@ -30,8 +33,10 @@ type OrdMapperPanelProps = {
 
 export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps) {
     const [rawOrds, setRawOrds] = useState('');
+    const [startPath, setStartPath] = useState('config/Drivers');
     const [mapping, setMapping] = useState<PointMappingOutput | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [isFetching, setIsFetching] = useState(false);
     const { toast } = useToast();
 
     const categorizePoint = (name: string): Point['category'] => {
@@ -45,12 +50,32 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
         return 'Other';
     };
 
+    const handleAutoDiscover = async () => {
+        setIsFetching(true);
+        try {
+            const discovered = await discoverAllOrds(startPath);
+            setRawOrds(discovered.join('\n'));
+            toast({
+                title: "Discovery Complete",
+                description: `Found ${discovered.length} points at ${startPath}`,
+            });
+        } catch (error: any) {
+            toast({
+                title: "Connection Failed",
+                description: error.message || "Check your .env settings and station status.",
+                variant: "destructive"
+            });
+        } finally {
+            setIsFetching(false);
+        }
+    };
+
     const handleProcess = () => {
         const ordArray = rawOrds.split('\n').map(s => s.trim()).filter(Boolean);
         if (ordArray.length === 0) {
             toast({
                 title: "No ORDs found",
-                description: "Please enter some Niagara ORDs to process.",
+                description: "Paste ORDs or use Auto-Discover to get started.",
                 variant: "destructive"
             });
             return;
@@ -65,11 +90,9 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             ordArray.forEach(ord => {
                 const parts = ord.split('/');
                 const pointName = parts[parts.length - 1] || 'Unknown';
-                // Try to find a room-like segment (e.g. segments with 'Room', 'Rm', or just the parent)
                 let roomName = 'Global/Unassigned';
                 
                 if (parts.length > 1) {
-                    // Logic: Use the parent segment as the room/zone name
                     roomName = parts[parts.length - 2];
                 }
 
@@ -90,7 +113,6 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 points
             }));
 
-            // Generate a basic script preview based on the mapped points
             const scriptPreview = `/**\n * Auto-generated Niagara Script\n */\n\npublic void onExecute() {\n${
                 rooms.map(r => 
                     `  // ${r.roomName}\n` + 
@@ -103,9 +125,9 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             
             toast({
                 title: "Mapping Complete",
-                description: "Points have been categorized and grouped by path.",
+                description: "Points have been grouped and categorized.",
             });
-        }, 500); // Small delay to simulate processing
+        }, 500);
     };
 
     const copyToClipboard = (text: string) => {
@@ -121,26 +143,57 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             id="ord-mapper-panel"
             title="ORD Mapper"
             icon={<Database className="h-5 w-5 text-primary" />}
-            description="Automatic Niagara point discovery & mapping."
+            description="Secure Niagara point discovery & categorization."
             initialPosition={initialPosition}
             className="w-[450px]"
         >
             <div className="space-y-4">
-                <div className="space-y-2">
-                    <Textarea
-                        value={rawOrds}
-                        onChange={(e) => setRawOrds(e.target.value)}
-                        placeholder="Paste raw Niagara ORDs here (one per line)..."
-                        className="h-24 font-mono text-xs resize-none bg-muted/50"
-                    />
-                    <Button onClick={handleProcess} disabled={isLoading} className="w-full">
-                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Filter className="mr-2 h-4 w-4" />}
-                        Map Points
-                    </Button>
-                </div>
+                <Tabs defaultValue="discovery" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="discovery">Discovery</TabsTrigger>
+                        <TabsTrigger value="manual">Manual Paste</TabsTrigger>
+                    </TabsList>
+                    
+                    <TabsContent value="discovery" className="space-y-3 pt-2">
+                        <div className="space-y-1.5">
+                            <Label htmlFor="start-path">Start Discovery Path</Label>
+                            <div className="flex gap-2">
+                                <Input 
+                                    id="start-path"
+                                    value={startPath} 
+                                    onChange={(e) => setStartPath(e.target.value)}
+                                    placeholder="e.g. config/Drivers"
+                                    className="font-mono text-xs"
+                                />
+                                <Button 
+                                    variant="secondary" 
+                                    onClick={handleAutoDiscover} 
+                                    disabled={isFetching}
+                                >
+                                    {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
+                                </Button>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">Uses secure server-side proxy for read-only access.</p>
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="manual" className="pt-2">
+                        <Textarea
+                            value={rawOrds}
+                            onChange={(e) => setRawOrds(e.target.value)}
+                            placeholder="Paste raw Niagara ORDs here (one per line)..."
+                            className="h-24 font-mono text-xs resize-none bg-muted/50"
+                        />
+                    </TabsContent>
+                </Tabs>
+
+                <Button onClick={handleProcess} disabled={isLoading || !rawOrds} className="w-full">
+                    {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Filter className="mr-2 h-4 w-4" />}
+                    Analyze & Map Points
+                </Button>
 
                 {mapping && (
-                    <Tabs defaultValue="mapped" className="w-full">
+                    <Tabs defaultValue="mapped" className="w-full mt-4">
                         <TabsList className="grid w-full grid-cols-2">
                             <TabsTrigger value="mapped">Mapped Points</TabsTrigger>
                             <TabsTrigger value="script">Script Preview</TabsTrigger>
@@ -151,7 +204,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                                 <div key={idx} className="border rounded-md p-3 bg-muted/30 border-primary/20">
                                     <h4 className="font-bold text-sm text-primary mb-2 flex items-center justify-between">
                                         {room.roomName}
-                                        <span className="text-[10px] font-normal text-muted-foreground bg-secondary px-1.5 rounded">{room.points.length} points</span>
+                                        <span className="text-[10px] font-normal text-muted-foreground bg-secondary px-1.5 rounded">{room.points.length} pts</span>
                                     </h4>
                                     <ul className="space-y-1.5">
                                         {room.points.map((p, pIdx) => (
@@ -172,11 +225,9 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
 
                         <TabsContent value="script" className="mt-4">
                             <div className="relative group">
-                                <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Button size="icon" variant="secondary" className="h-8 w-8" onClick={() => copyToClipboard(mapping.generatedScriptPreview)}>
-                                        <Copy className="h-4 w-4" />
-                                    </Button>
-                                </div>
+                                <Button size="icon" variant="secondary" className="absolute right-2 top-2 h-8 w-8 z-10" onClick={() => copyToClipboard(mapping.generatedScriptPreview)}>
+                                    <Copy className="h-4 w-4" />
+                                </Button>
                                 <pre className="bg-muted p-4 rounded-md text-[11px] font-mono whitespace-pre-wrap overflow-x-auto border border-border/50 max-h-80">
                                     <code>{mapping.generatedScriptPreview}</code>
                                 </pre>
