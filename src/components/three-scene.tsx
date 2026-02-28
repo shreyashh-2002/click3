@@ -36,7 +36,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSear
       50,
       currentMount.clientWidth / currentMount.clientHeight,
       0.1,
-      2000 // Increased far plane
+      2000
     );
     camera.position.set(-5.58, 44.30, 74.58);
 
@@ -129,7 +129,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSear
 
     const onClick = (event: MouseEvent) => {
         const clickedOnUi = (event.target as HTMLElement).closest(
-            `#${CSS.escape('code-generator-panel')}, #${CSS.escape('corners-generator-panel')}, #${CSS.escape('mesh-search-panel')}, #${CSS.escape('mesh-filter-panel')}, header, [data-sidebar="sidebar"]`
+            `#${CSS.escape('code-generator-panel')}, #${CSS.escape('corners-generator-panel')}, #${CSS.escape('mesh-search-panel')}, #${CSS.escape('mesh-filter-panel')}, header, [data-sidebar="sidebar"], .floating-action-button`
         );
         
         if (!currentModel || clickedOnUi) {
@@ -168,18 +168,21 @@ export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSear
     };
     animate();
 
-    const handleResize = () => {
-      if (!currentMount) return;
-      camera.aspect = currentMount.clientWidth / currentMount.clientHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(currentMount.clientWidth, currentMount.clientHeight);
-    };
-    window.addEventListener('resize', handleResize);
+    // Use ResizeObserver for dynamic resizing (responsive to sidebar changes)
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height);
+      }
+    });
+    resizeObserver.observe(currentMount);
 
     return () => {
       cancelAnimationFrame(animationFrameId);
       currentMount.removeEventListener('click', onClick);
-      window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
       if (currentMount && renderer.domElement) {
         currentMount.removeChild(renderer.domElement);
       }
@@ -272,7 +275,6 @@ useEffect(() => {
             }
         } catch (e) {
             console.error("Could not parse corners. Ensure it's a valid JSON array string.", e);
-            // Silently fail and proceed without the area filter.
         }
     }
 

@@ -13,7 +13,6 @@ import MeshFilterPanel from '@/components/mesh-filter-panel';
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -24,8 +23,8 @@ import {
   SidebarProvider,
   SidebarTrigger,
   SidebarInset,
+  SidebarFooter,
 } from "@/components/ui/sidebar"
-import { Separator } from '@/components/ui/separator';
 
 export default function Home() {
   const [sceneClick, setSceneClick] = useState<THREE.Vector3 | null>(null);
@@ -148,27 +147,13 @@ export default function Home() {
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
-            
-            <SidebarGroup className="mt-auto">
-              <SidebarGroupLabel>Actions</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton onClick={handleUploadClick} tooltip="Upload .GLB/.GLTF">
-                      <Upload />
-                      <span>Upload Model</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
           </SidebarContent>
           <SidebarFooter className="border-t border-border/50 p-2">
             <SidebarTrigger />
           </SidebarFooter>
         </Sidebar>
 
-        <SidebarInset className="relative flex flex-col min-w-0 h-full">
+        <SidebarInset className="relative flex flex-col min-w-0 h-full overflow-hidden">
           <main className="flex-1 relative overflow-hidden">
             <ThreeScene 
               onCoordChange={handleCoordChange} 
@@ -178,6 +163,14 @@ export default function Home() {
               yFilter={yFilter}
               onYFilterResults={handleFilterResults}
             />
+
+            {/* Floating Upload Button - Top Right */}
+            <div className="absolute top-4 right-4 z-30 floating-action-button">
+              <Button onClick={handleUploadClick} className="shadow-2xl gap-2">
+                <Upload className="size-4" />
+                Upload Model
+              </Button>
+            </div>
 
             {showGenerator && (
               <CodeGeneratorPanel
