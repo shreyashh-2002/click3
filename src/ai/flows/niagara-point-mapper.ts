@@ -21,7 +21,8 @@ const PointMappingOutputSchema = z.object({
       category: z.enum(['Temperature', 'Setpoint', 'Humidity', 'Occupancy', 'Status', 'Command', 'Other']),
       label: z.string().describe('A friendly human-readable label for the point.'),
     }))
-  }))
+  })),
+  generatedScriptPreview: z.string().describe('A sample Niagara script snippet using the identified ORDs.'),
 });
 export type PointMappingOutput = z.infer<typeof PointMappingOutputSchema>;
 
@@ -34,9 +35,10 @@ const mapperPrompt = ai.definePrompt({
     You will receive a list of raw ORDs (Object Reference Detectors) from a station.
     
     Your task:
-    1. Parse the paths to identify individual rooms or equipment zones.
-    2. Categorize each point based on its name and path (e.g., "SpaceTemp" is Temperature, "Occ" is Occupancy).
+    1. Parse the paths to identify individual rooms or equipment zones. Look for common path structures like /Drivers/Bacnet/Room_101/...
+    2. Categorize each point based on its name and path (e.g., "SpaceTemp" is Temperature, "Occ" is Occupancy, "Setpt" is Setpoint).
     3. Generate a clean, friendly label for each point.
+    4. Based on the discovered points, generate a brief Java/BQL script preview that could be used in a Niagara Program object or Robot.
     
     Here are the ORDs:
     {{#each rawOrds}}
