@@ -4,10 +4,25 @@ import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Zap, Loader2, Code, Copy, Check } from 'lucide-react';
+import { Database, Zap, Loader2, Code, Copy, Check, Filter } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
-import { mapNiagaraPoints, type PointMappingOutput } from '@/ai/flows/niagara-point-mapper';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+type Point = {
+    ord: string;
+    category: 'Temperature' | 'Setpoint' | 'Humidity' | 'Occupancy' | 'Status' | 'Command' | 'Other';
+    label: string;
+};
+
+type RoomMapping = {
+    roomName: string;
+    points: Point[];
+};
+
+type PointMappingOutput = {
+    rooms: RoomMapping[];
+    generatedScriptPreview: string;
+};
 
 type OrdMapperPanelProps = {
     initialPosition: { x: number; y: number };
@@ -19,7 +34,18 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
     const [isLoading, setIsLoading] = useState(false);
     const { toast } = useToast();
 
-    const handleProcess = async () => {
+    const categorizePoint = (name: string): Point['category'] => {
+        const n = name.toLowerCase();
+        if (n.includes('temp') || n.includes('temperature')) return 'Temperature';
+        if (n.includes('set') || n.includes('sp') || n.includes('stp')) return 'Setpoint';
+        if (n.includes('hum') || n.includes('humidity')) return 'Humidity';
+        if (n.includes('occ') || n.includes('occupancy')) return 'Occupancy';
+        if (n.includes('stat') || n.includes('alarm') || n.includes('fbk')) return 'Status';
+        if (n.includes('cmd') || n.includes('out') || n.includes('start')) return 'Command';
+        return 'Other';
+    };
+
+    const handleProcess = () => {
         const ordArray = rawOrds.split('\n').map(s => s.trim()).filter(Boolean);
         if (ordArray.length === 0) {
             toast({
@@ -31,22 +57,55 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
         }
 
         setIsLoading(true);
-        try {
-            const result = await mapNiagaraPoints({ rawOrds: ordArray });
-            setMapping(result);
+        
+        // Manual Parsing Logic (No AI)
+        setTimeout(() => {
+            const roomsMap: Record<string, Point[]> = {};
+
+            ordArray.forEach(ord => {
+                const parts = ord.split('/');
+                const pointName = parts[parts.length - 1] || 'Unknown';
+                // Try to find a room-like segment (e.g. segments with 'Room', 'Rm', or just the parent)
+                let roomName = 'Global/Unassigned';
+                
+                if (parts.length > 1) {
+                    // Logic: Use the parent segment as the room/zone name
+                    roomName = parts[parts.length - 2];
+                }
+
+                const category = categorizePoint(pointName);
+                const label = pointName
+                    .replace(/_/g, ' ')
+                    .replace(/([A-Z])/g, ' $1')
+                    .trim();
+
+                const point: Point = { ord, category, label };
+
+                if (!roomsMap[roomName]) roomsMap[roomName] = [];
+                roomsMap[roomName].push(point);
+            });
+
+            const rooms: RoomMapping[] = Object.entries(roomsMap).map(([roomName, points]) => ({
+                roomName,
+                points
+            }));
+
+            // Generate a basic script preview based on the mapped points
+            const scriptPreview = `/**\n * Auto-generated Niagara Script\n */\n\npublic void onExecute() {\n${
+                rooms.map(r => 
+                    `  // ${r.roomName}\n` + 
+                    r.points.map(p => `  BStatusNumeric ${p.label.replace(/\s+/g, '')} = (BStatusNumeric) get("${p.ord}");`).join('\n')
+                ).join('\n\n')
+            }\n}`;
+
+            setMapping({ rooms, generatedScriptPreview: scriptPreview });
+            setIsLoading(false);
+            
             toast({
                 title: "Mapping Complete",
-                description: "AI has successfully categorized your points and generated a script preview.",
+                description: "Points have been categorized and grouped by path.",
             });
-        } catch (error: any) {
-            toast({
-                title: "Error",
-                description: error.message || "Failed to process ORDs with AI.",
-                variant: "destructive"
-            });
-        } finally {
-            setIsLoading(false);
-        }
+        }, 500); // Small delay to simulate processing
     };
 
     const copyToClipboard = (text: string) => {
@@ -62,7 +121,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             id="ord-mapper-panel"
             title="ORD Mapper"
             icon={<Database className="h-5 w-5 text-primary" />}
-            description="Intelligent Niagara point discovery & mapping."
+            description="Automatic Niagara point discovery & mapping."
             initialPosition={initialPosition}
             className="w-[450px]"
         >
@@ -75,8 +134,8 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                         className="h-24 font-mono text-xs resize-none bg-muted/50"
                     />
                     <Button onClick={handleProcess} disabled={isLoading} className="w-full">
-                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
-                        Process with AI Agent
+                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Filter className="mr-2 h-4 w-4" />}
+                        Map Points
                     </Button>
                 </div>
 
@@ -122,9 +181,6 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                                     <code>{mapping.generatedScriptPreview}</code>
                                 </pre>
                             </div>
-                            <p className="text-[10px] text-muted-foreground mt-2 italic text-center">
-                                Generated by Niagara Engineering Agent
-                            </p>
                         </TabsContent>
                     </Tabs>
                 )}
