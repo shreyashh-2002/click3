@@ -50,7 +50,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     currentMount.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Handle Resize
+    // Handle Resize (Responsive to sidebar changes)
     const resizeObserver = new ResizeObserver(() => {
       if (!currentMount || !cameraRef.current || !rendererRef.current) return;
       const width = currentMount.clientWidth;
@@ -93,7 +93,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
           child.receiveShadow = true;
         }
       });
-      // EXACT POSITION REQUESTED: X: -3.0086, Y: 1.8078, Z: 0.0286
+      // EXACT POSITION REQUESTED
       model.position.set(-3.0086, 1.8078, 0.0286);
       
       if (modelRef.current) scene.remove(modelRef.current);
@@ -103,7 +103,6 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     };
 
     const createFallback = () => {
-      console.log("Loading fallback model...");
       const geometry = new THREE.TorusKnotGeometry(10, 3, 128, 16);
       const material = new THREE.MeshStandardMaterial({ color: 0x7c3aed, roughness: 0.3, metalness: 0.8 });
       const mesh = new THREE.Mesh(geometry, material);
@@ -127,7 +126,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
       createFallback();
     }
 
-    // Interaction logic (Raycasting)
+    // Interaction logic
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     let marker: THREE.Mesh | null = null;
@@ -186,11 +185,16 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     const { yThreshold, corners } = extractionParams;
     const results: string[] = [];
 
+    // Point-in-Polygon logic for XZ plane
     const isInside = (x: number, z: number, poly: number[][]) => {
       let inside = false;
       for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-        const xi = poly[i][0], zi = poly[i][2];
-        const xj = poly[j][0], zj = poly[j][2];
+        // Handle both [x, y, z] and [x, z] coordinate formats
+        const xi = poly[i][0];
+        const zi = poly[i].length === 3 ? poly[i][2] : poly[i][1];
+        const xj = poly[j][0];
+        const zj = poly[j].length === 3 ? poly[j][2] : poly[j][1];
+        
         const intersect = ((zi > z) !== (zj > z)) && (x < (xj - xi) * (z - zi) / (zj - zi) + xi);
         if (intersect) inside = !inside;
       }
@@ -202,7 +206,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         const worldPos = new THREE.Vector3();
         object.getWorldPosition(worldPos);
 
-        // Filter by Y Threshold and Bounding Box
+        // Filter: Above Y Threshold AND Inside Horizontal Boundary
         if (worldPos.y > yThreshold) {
           if (corners.length === 0 || isInside(worldPos.x, worldPos.z, corners)) {
             results.push(object.name || `Unnamed Mesh (${object.uuid.slice(0, 5)})`);

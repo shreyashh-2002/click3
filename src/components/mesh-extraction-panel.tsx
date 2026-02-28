@@ -22,22 +22,42 @@ export default function MeshExtractionPanel({ onExtract, results, initialPositio
 
     const handleExtract = () => {
         let corners: number[][] = [];
-        if (cornersInput.trim()) {
-            try {
-                // Parse the custom format provided by user
-                const cleaned = cornersInput
-                    .replace(/corners:\s*\[/, '[')
-                    .replace(/\]\s*$/, ']')
-                    .replace(/,\s*\]/, ']');
-                corners = JSON.parse(cleaned);
-            } catch (e) {
-                toast({
-                    variant: 'destructive',
-                    title: "Invalid Format",
-                    description: "Please check your corners array format.",
-                });
-                return;
+        
+        if (!cornersInput.trim()) {
+            toast({
+                variant: 'destructive',
+                title: "Missing Coordinates",
+                description: "Please provide a corners array.",
+            });
+            return;
+        }
+
+        try {
+            // Robust parsing for common JS/JSON array formats including 'corners: [...]'
+            let cleaned = cornersInput.trim();
+            
+            // Remove 'corners:' label if present
+            if (cleaned.startsWith('corners:')) {
+                cleaned = cleaned.replace(/^corners:\s*/, '');
             }
+            
+            // Basic cleanup for JSON parsing
+            cleaned = cleaned.replace(/,\s*\]/g, ']'); // Remove trailing commas
+            
+            // Evaluate if it looks like a JS array but isn't strict JSON
+            // Using JSON.parse is safer than eval
+            corners = JSON.parse(cleaned);
+
+            if (!Array.isArray(corners) || corners.length < 3) {
+                throw new Error("Invalid array structure");
+            }
+        } catch (e) {
+            toast({
+                variant: 'destructive',
+                title: "Invalid Format",
+                description: "Ensure your corners are in a valid array format: [[x,y,z], [x,y,z], ...]",
+            });
+            return;
         }
 
         onExtract({
@@ -58,28 +78,28 @@ export default function MeshExtractionPanel({ onExtract, results, initialPositio
             id="mesh-extraction-panel"
             title="Mesh Extraction"
             icon={<Layers className="h-5 w-5 text-primary" />}
-            description="Extract meshes within a spatial boundary."
+            description="Extract meshes within a boundary and above a Y threshold."
             initialPosition={initialPosition}
             className="w-96"
         >
             <div className="space-y-4">
                 <div className="space-y-2">
-                    <Label>Y-Axis Threshold</Label>
+                    <Label>Y-Axis Threshold (Greater Than)</Label>
                     <Input
                         type="number"
                         step="0.1"
                         value={yValue}
                         onChange={(e) => setYValue(e.target.value)}
-                        placeholder="e.g., 2.2"
+                        placeholder="e.g., 2.0"
                     />
                 </div>
                 
                 <div className="space-y-2">
-                    <Label>Boundary Corners (Array)</Label>
+                    <Label>Boundary Corners Array</Label>
                     <Textarea
                         value={cornersInput}
                         onChange={(e) => setCornersInput(e.target.value)}
-                        placeholder={'[ [-51.3, 2.2, -28.8], ... ]'}
+                        placeholder={'corners: [\n  [-51.3, 2.2, -28.8],\n  ...\n]'}
                         className="font-mono text-[10px] h-32 resize-none bg-muted/50"
                     />
                 </div>
@@ -101,7 +121,7 @@ export default function MeshExtractionPanel({ onExtract, results, initialPositio
                         </Button>
                     )}
                 </div>
-                <p className="text-[10px] text-muted-foreground text-center">Found {results.length} unique meshes.</p>
+                <p className="text-[10px] text-muted-foreground text-center">Found {results.length} unique meshes matching criteria.</p>
             </div>
         </DraggablePanel>
     );
