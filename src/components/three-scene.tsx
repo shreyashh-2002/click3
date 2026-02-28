@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 
 type ExtractionParams = {
   yThreshold: number;
@@ -27,32 +28,45 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     const currentMount = mountRef.current;
     if (!currentMount) return;
 
+    // Initialize Scene
     const scene = new THREE.Scene();
     sceneRef.current = scene;
     scene.background = new THREE.Color(0x111111);
 
-    const camera = new THREE.PerspectiveCamera(50, currentMount.clientWidth / currentMount.clientHeight, 0.1, 2000);
+    // Initialize Camera
+    const camera = new THREE.PerspectiveCamera(50, currentMount.clientWidth / currentMount.clientHeight, 0.1, 5000);
     camera.position.set(-5.58, 44.30, 74.58);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    // Initialize Renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(currentMount.clientWidth, currentMount.clientHeight);
     renderer.shadowMap.enabled = true;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1;
+    renderer.toneMappingExposure = 1.2;
     currentMount.appendChild(renderer.domElement);
 
+    // Setup Loaders
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+
     const ktx2Loader = new KTX2Loader()
-      .setTranscoderPath('https://unpkg.com/three@0.155.0/examples/jsm/libs/basis/')
+      .setTranscoderPath('https://unpkg.com/three@0.165.0/examples/jsm/libs/basis/')
       .detectSupport(renderer);
 
+    const gltfLoader = new GLTFLoader();
+    gltfLoader.setDRACOLoader(dracoLoader);
+    gltfLoader.setKTX2Loader(ktx2Loader);
+
+    // Setup Controls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.target.set(-4.8, -3.1, 2.2);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 1.5));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 3);
-    dirLight.position.set(15, 20, 5);
+    // Setup Lighting
+    scene.add(new THREE.AmbientLight(0xffffff, 2.0));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 2.5);
+    dirLight.position.set(50, 100, 50);
     dirLight.castShadow = true;
     scene.add(dirLight);
 
@@ -63,7 +77,9 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
           child.receiveShadow = true;
         }
       });
+      // EXACT POSITION REQUESTED: X: -3.0086, Y: 1.8078, Z: 0.0286
       model.position.set(-3.0086, 1.8078, 0.0286);
+      
       if (modelRef.current) scene.remove(modelRef.current);
       scene.add(model);
       modelRef.current = model;
@@ -71,16 +87,34 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     };
 
     const createFallback = () => {
-      const mesh = new THREE.Mesh(new THREE.TorusKnotGeometry(10, 3, 128, 16), new THREE.MeshStandardMaterial({ color: 0x7c3aed }));
+      console.log("Loading fallback model...");
+      const geometry = new THREE.TorusKnotGeometry(10, 3, 128, 16);
+      const material = new THREE.MeshStandardMaterial({ color: 0x7c3aed, roughness: 0.3, metalness: 0.8 });
+      const mesh = new THREE.Mesh(geometry, material);
       setupModel(mesh);
     };
 
+    // Load Model
     if (modelUrl) {
-      new GLTFLoader().setKTX2Loader(ktx2Loader).load(modelUrl, (gltf) => setupModel(gltf.scene), undefined, createFallback);
+      gltfLoader.load(
+        modelUrl, 
+        (gltf) => {
+          console.log("Model loaded successfully");
+          setupModel(gltf.scene);
+        }, 
+        (xhr) => {
+          console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+        },
+        (error) => {
+          console.error("Error loading model:", error);
+          createFallback();
+        }
+      );
     } else {
       createFallback();
     }
 
+    // Interaction logic (Raycasting)
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     let marker: THREE.Mesh | null = null;
@@ -100,7 +134,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         const point = intersects[0].point;
         onCoordChange(point.clone());
         if (!marker) {
-          marker = new THREE.Mesh(new THREE.SphereGeometry(0.2), new THREE.MeshBasicMaterial({ color: 0x8b5cf6 }));
+          marker = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({ color: 0x8b5cf6 }));
           scene.add(marker);
         }
         marker.position.copy(point);
@@ -109,6 +143,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
 
     currentMount.addEventListener('click', onClick);
 
+    // Animation Loop
     let frameId: number;
     const animate = () => {
       frameId = requestAnimationFrame(animate);
@@ -117,14 +152,20 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     };
     animate();
 
+    // Cleanup
     return () => {
       cancelAnimationFrame(frameId);
       currentMount.removeEventListener('click', onClick);
       renderer.dispose();
+      dracoLoader.dispose();
       ktx2Loader.dispose();
+      if (currentMount.contains(renderer.domElement)) {
+        currentMount.removeChild(renderer.domElement);
+      }
     };
   }, [modelUrl, onCoordChange]);
 
+  // Spatial Extraction Effect
   useEffect(() => {
     if (!extractionParams || !modelRef.current) return;
 
@@ -147,6 +188,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         const worldPos = new THREE.Vector3();
         object.getWorldPosition(worldPos);
 
+        // Filter by Y Threshold and Bounding Box
         if (worldPos.y > yThreshold) {
           if (corners.length === 0 || isInside(worldPos.x, worldPos.z, corners)) {
             results.push(object.name || `Unnamed Mesh (${object.uuid.slice(0, 5)})`);
