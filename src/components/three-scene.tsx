@@ -1,43 +1,39 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
-import type { MeshInfo } from './mesh-search-panel';
 
+type ExtractionParams = {
+  yThreshold: number;
+  corners: number[][];
+};
 
 type ThreeSceneProps = {
   onCoordChange: (coords: THREE.Vector3 | null) => void;
   modelUrl: string | null;
-  searchTerm: string;
-  onSearchResults: (results: MeshInfo[]) => void;
+  extractionParams: ExtractionParams | null;
+  onExtractionResults: (results: string[]) => void;
 };
 
-export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSearchResults }: ThreeSceneProps) {
+export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, onExtractionResults }: ThreeSceneProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
+  const modelRef = useRef<THREE.Object3D | null>(null);
 
   useEffect(() => {
     const currentMount = mountRef.current;
     if (!currentMount) return;
 
-    // Scene
     const scene = new THREE.Scene();
     sceneRef.current = scene;
     scene.background = new THREE.Color(0x111111);
 
-    // Camera
-    const camera = new THREE.PerspectiveCamera(
-      50,
-      currentMount.clientWidth / currentMount.clientHeight,
-      0.1,
-      2000
-    );
+    const camera = new THREE.PerspectiveCamera(50, currentMount.clientWidth / currentMount.clientHeight, 0.1, 2000);
     camera.position.set(-5.58, 44.30, 74.58);
 
-    // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(currentMount.clientWidth, currentMount.clientHeight);
@@ -47,189 +43,120 @@ export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSear
     currentMount.appendChild(renderer.domElement);
 
     const ktx2Loader = new KTX2Loader()
-      .setTranscoderPath( 'https://unpkg.com/three@0.155.0/examples/jsm/libs/basis/' )
-      .detectSupport( renderer );
+      .setTranscoderPath('https://unpkg.com/three@0.155.0/examples/jsm/libs/basis/')
+      .detectSupport(renderer);
 
-
-    // Controls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.target.set(-4.8, -3.1, 2.2);
 
-    // Lights
     scene.add(new THREE.AmbientLight(0xffffff, 1.5));
     const dirLight = new THREE.DirectionalLight(0xffffff, 3);
     dirLight.position.set(15, 20, 5);
     dirLight.castShadow = true;
-    dirLight.shadow.mapSize.width = 2048;
-    dirLight.shadow.mapSize.height = 2048;
     scene.add(dirLight);
 
-    let currentModel: THREE.Object3D | null = null;
-    let intersectionMarker: THREE.Mesh | null = null;
-
     const setupModel = (model: THREE.Object3D) => {
-        model.traverse((child) => {
-            if ((child as THREE.Mesh).isMesh) {
-                child.castShadow = true;
-                child.receiveShadow = true;
-            }
-        });
-        
-        // Set EXACT position as requested: X: -3.0086, Y: 1.8078, Z: 0.0286
-        model.position.set(-3.0086, 1.8078, 0.0286);
-
-        if (currentModel) {
-            scene.remove(currentModel);
+      model.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
         }
-        scene.add(model);
-        currentModel = model;
-        onCoordChange(null);
-
-        if(intersectionMarker) {
-            scene.remove(intersectionMarker);
-            intersectionMarker = null;
-        }
+      });
+      model.position.set(-3.0086, 1.8078, 0.0286);
+      if (modelRef.current) scene.remove(modelRef.current);
+      scene.add(model);
+      modelRef.current = model;
+      onCoordChange(null);
     };
 
-
-    const createFallbackModel = () => {
-      const geometry = new THREE.TorusKnotGeometry(10, 3, 128, 16);
-      const material = new THREE.MeshStandardMaterial({
-        color: 0x7c3aed, 
-        roughness: 0.1,
-        metalness: 0.9,
-      });
-      const mesh = new THREE.Mesh(geometry, material);
+    const createFallback = () => {
+      const mesh = new THREE.Mesh(new THREE.TorusKnotGeometry(10, 3, 128, 16), new THREE.MeshStandardMaterial({ color: 0x7c3aed }));
       setupModel(mesh);
     };
 
     if (modelUrl) {
-        const loader = new GLTFLoader().setKTX2Loader(ktx2Loader);
-        loader.load(modelUrl, (gltf) => {
-            setupModel(gltf.scene);
-        }, undefined, (error) => {
-            console.error('An error happened while loading the model:', error);
-            createFallbackModel();
-        });
+      new GLTFLoader().setKTX2Loader(ktx2Loader).load(modelUrl, (gltf) => setupModel(gltf.scene), undefined, createFallback);
     } else {
-      createFallbackModel();
+      createFallback();
     }
 
-
-    // Raycaster for click detection
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
+    let marker: THREE.Mesh | null = null;
 
     const onClick = (event: MouseEvent) => {
-        const clickedOnUi = (event.target as HTMLElement).closest(
-            `header, [data-sidebar="sidebar"], .floating-action-button, [id$="-panel"]`
-        );
-        
-        if (!currentModel || clickedOnUi) {
-            return;
+      const clickedOnUi = (event.target as HTMLElement).closest(`header, [data-sidebar="sidebar"], .floating-action-button, [id$="-panel"]`);
+      if (!modelRef.current || clickedOnUi) return;
+
+      const rect = currentMount.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObject(modelRef.current, true);
+
+      if (intersects.length > 0) {
+        const point = intersects[0].point;
+        onCoordChange(point.clone());
+        if (!marker) {
+          marker = new THREE.Mesh(new THREE.SphereGeometry(0.2), new THREE.MeshBasicMaterial({ color: 0x8b5cf6 }));
+          scene.add(marker);
         }
-
-        const rect = currentMount.getBoundingClientRect();
-        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-        raycaster.setFromCamera(mouse, camera);
-        const intersects = raycaster.intersectObject(currentModel, true);
-
-        if (intersects.length > 0) {
-            const point = intersects[0].point;
-            onCoordChange(point.clone());
-
-            if (!intersectionMarker) {
-                const markerGeometry = new THREE.SphereGeometry(0.2, 32, 32); 
-                const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x8b5cf6, transparent: true, opacity: 0.8 });
-                intersectionMarker = new THREE.Mesh(markerGeometry, markerMaterial);
-                scene.add(intersectionMarker);
-            }
-            intersectionMarker.position.copy(point);
-            intersectionMarker.visible = true;
-        }
+        marker.position.copy(point);
+      }
     };
 
     currentMount.addEventListener('click', onClick);
 
-    let animationFrameId: number;
+    let frameId: number;
     const animate = () => {
-      animationFrameId = requestAnimationFrame(animate);
+      frameId = requestAnimationFrame(animate);
       controls.update();
       renderer.render(scene, camera);
     };
     animate();
 
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-        renderer.setSize(width, height);
-      }
-    });
-    resizeObserver.observe(currentMount);
-
     return () => {
-      cancelAnimationFrame(animationFrameId);
+      cancelAnimationFrame(frameId);
       currentMount.removeEventListener('click', onClick);
-      resizeObserver.disconnect();
-      if (currentMount && renderer.domElement) {
-        currentMount.removeChild(renderer.domElement);
-      }
-      
-      if(currentModel) {
-        scene.remove(currentModel);
-        currentModel.traverse((object) => {
-            if (object instanceof THREE.Mesh) {
-                object.geometry.dispose();
-                if(Array.isArray(object.material)){
-                    object.material.forEach(m => m.dispose());
-                } else {
-                    object.material.dispose();
-                }
-            }
-        });
-      }
-
-      if (intersectionMarker) {
-        scene.remove(intersectionMarker);
-        intersectionMarker.geometry.dispose();
-        if (Array.isArray(intersectionMarker.material)) {
-            intersectionMarker.material.forEach(m => m.dispose());
-        } else {
-            intersectionMarker.material.dispose();
-        }
-      }
-      controls.dispose();
       renderer.dispose();
       ktx2Loader.dispose();
-      sceneRef.current = null;
     };
-  }, [onCoordChange, modelUrl]);
-  
+  }, [modelUrl, onCoordChange]);
+
   useEffect(() => {
-    if (!searchTerm || !sceneRef.current) {
-        if (searchTerm === '') onSearchResults([]);
-        return;
+    if (!extractionParams || !modelRef.current) return;
+
+    const { yThreshold, corners } = extractionParams;
+    const results: string[] = [];
+
+    const isInside = (x: number, z: number, poly: number[][]) => {
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i][0], zi = poly[i][2];
+        const xj = poly[j][0], zj = poly[j][2];
+        const intersect = ((zi > z) !== (zj > z)) && (x < (xj - xi) * (z - zi) / (zj - zi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
     };
 
-    const scene = sceneRef.current;
-    const results: MeshInfo[] = [];
-    scene.traverse((object) => {
-        if (object instanceof THREE.Mesh && object.name.toLowerCase().startsWith(searchTerm.toLowerCase())) {
-            const box = new THREE.Box3().setFromObject(object);
-            const center = box.getCenter(new THREE.Vector3());
-            results.push({
-                name: object.name,
-                center,
-            });
+    modelRef.current.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        const worldPos = new THREE.Vector3();
+        object.getWorldPosition(worldPos);
+
+        if (worldPos.y > yThreshold) {
+          if (corners.length === 0 || isInside(worldPos.x, worldPos.z, corners)) {
+            results.push(object.name || `Unnamed Mesh (${object.uuid.slice(0, 5)})`);
+          }
         }
+      }
     });
-    onSearchResults(results);
-}, [searchTerm, onSearchResults]);
+
+    onExtractionResults(Array.from(new Set(results)));
+  }, [extractionParams, onExtractionResults]);
 
   return <div ref={mountRef} className="w-full h-full absolute top-0 left-0 z-0" />;
 }

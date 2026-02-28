@@ -1,13 +1,12 @@
-
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Button } from "@/components/ui/button";
-import { Upload, SquareAsterisk, Search, Layout, ChevronRight, Database, BookOpen, Wind, Map } from 'lucide-react';
+import { Upload, SquareAsterisk, Search, Layout, ChevronRight, Database, BookOpen, Wind, Map, Layers } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
 import CornersGeneratorPanel from '@/components/corners-generator-panel';
-import MeshSearchPanel, { type MeshInfo } from '@/components/mesh-search-panel';
+import MeshExtractionPanel from '@/components/mesh-extraction-panel';
 import OrdMapperPanel from '@/components/ord-mapper-panel';
 import DraggablePanel from '@/components/draggable-panel';
 import {
@@ -40,16 +39,15 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isClient, setIsClient] = useState(false);
   
-  // States for active panels
-  const [showCornersGenerator, setShowCornersGenerator] = useState(false);
-  const [showMeshSearch, setShowMeshSearch] = useState(false);
+  const [showCoordinates, setShowCoordinates] = useState(false);
+  const [showMeshExtraction, setShowMeshExtraction] = useState(false);
   const [showOrdMapper, setShowOrdMapper] = useState(false);
   const [showLms, setShowLms] = useState(false);
   const [showHvac, setShowHvac] = useState(false);
   const [showFloorLayout, setShowFloorLayout] = useState(false);
   
-  const [searchTerm, setSearchTerm] = useState('');
-  const [searchResults, setSearchResults] = useState<MeshInfo[]>([]);
+  const [extractionParams, setExtractionParams] = useState<{ yThreshold: number; corners: number[][] } | null>(null);
+  const [extractionResults, setExtractionResults] = useState<string[]>([]);
 
   useEffect(() => {
     setIsClient(true);
@@ -71,18 +69,12 @@ export default function Home() {
   const handleUploadClick = () => {
     fileInputRef.current?.click();
   };
-  
-  const handleSearch = (term: string) => {
-    setSearchTerm(term);
-  };
-  
-  const handleSearchResults = useCallback((results: MeshInfo[]) => {
-    setSearchResults(results);
+
+  const handleExtractionResults = useCallback((results: string[]) => {
+    setExtractionResults(results);
   }, []);
 
-  if (!isClient) {
-    return null;
-  }
+  if (!isClient) return null;
 
   return (
     <SidebarProvider>
@@ -104,7 +96,6 @@ export default function Home() {
               <SidebarGroupLabel>Menu</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {/* UI SECTION */}
                   <SidebarMenuItem>
                     <Collapsible asChild defaultOpen className="group/collapsible">
                       <div>
@@ -119,8 +110,8 @@ export default function Home() {
                           <SidebarMenuSub>
                             <SidebarMenuSubItem>
                               <SidebarMenuSubButton 
-                                onClick={() => setShowCornersGenerator(!showCornersGenerator)}
-                                isActive={showCornersGenerator}
+                                onClick={() => setShowCoordinates(!showCoordinates)}
+                                isActive={showCoordinates}
                               >
                                 <SquareAsterisk className="size-4 mr-2" />
                                 <span>Coordinates</span>
@@ -128,10 +119,10 @@ export default function Home() {
                             </SidebarMenuSubItem>
                             <SidebarMenuSubItem>
                               <SidebarMenuSubButton 
-                                onClick={() => setShowMeshSearch(!showMeshSearch)}
-                                isActive={showMeshSearch}
+                                onClick={() => setShowMeshExtraction(!showMeshExtraction)}
+                                isActive={showMeshExtraction}
                               >
-                                <Search className="size-4 mr-2" />
+                                <Layers className="size-4 mr-2" />
                                 <span>Mesh Extraction</span>
                               </SidebarMenuSubButton>
                             </SidebarMenuSubItem>
@@ -141,7 +132,6 @@ export default function Home() {
                     </Collapsible>
                   </SidebarMenuItem>
 
-                  {/* ORD SECTION */}
                   <SidebarMenuItem>
                     <Collapsible asChild className="group/collapsible">
                       <div>
@@ -164,28 +154,19 @@ export default function Home() {
                               </SidebarMenuSubButton>
                             </SidebarMenuSubItem>
                             <SidebarMenuSubItem>
-                              <SidebarMenuSubButton 
-                                onClick={() => setShowLms(!showLms)}
-                                isActive={showLms}
-                              >
+                              <SidebarMenuSubButton onClick={() => setShowLms(!showLms)} isActive={showLms}>
                                 <BookOpen className="size-4 mr-2" />
                                 <span>LMS</span>
                               </SidebarMenuSubButton>
                             </SidebarMenuSubItem>
                             <SidebarMenuSubItem>
-                              <SidebarMenuSubButton 
-                                onClick={() => setShowHvac(!showHvac)}
-                                isActive={showHvac}
-                              >
+                              <SidebarMenuSubButton onClick={() => setShowHvac(!showHvac)} isActive={showHvac}>
                                 <Wind className="size-4 mr-2" />
                                 <span>HVAC</span>
                               </SidebarMenuSubButton>
                             </SidebarMenuSubItem>
                             <SidebarMenuSubItem>
-                              <SidebarMenuSubButton 
-                                onClick={() => setShowFloorLayout(!showFloorLayout)}
-                                isActive={showFloorLayout}
-                              >
+                              <SidebarMenuSubButton onClick={() => setShowFloorLayout(!showFloorLayout)} isActive={showFloorLayout}>
                                 <Map className="size-4 mr-2" />
                                 <span>Floor Layout</span>
                               </SidebarMenuSubButton>
@@ -209,8 +190,8 @@ export default function Home() {
             <ThreeScene 
               onCoordChange={handleCoordChange} 
               modelUrl={modelUrl}
-              searchTerm={searchTerm}
-              onSearchResults={handleSearchResults}
+              extractionParams={extractionParams}
+              onExtractionResults={handleExtractionResults}
             />
 
             <div className="absolute top-4 right-4 z-30 floating-action-button">
@@ -220,67 +201,38 @@ export default function Home() {
               </Button>
             </div>
 
-            {showCornersGenerator && (
+            {showCoordinates && (
               <CornersGeneratorPanel
                 lastClick={sceneClick}
                 initialPosition={{ x: 20, y: 20 }}
               />
             )}
             
-            {showMeshSearch && (
-              <MeshSearchPanel
-                onSearch={handleSearch}
-                results={searchResults}
+            {showMeshExtraction && (
+              <MeshExtractionPanel
+                onExtract={setExtractionParams}
+                results={extractionResults}
                 initialPosition={{ x: 420, y: 20 }}
               />
             )}
 
-            {showOrdMapper && (
-              <OrdMapperPanel
-                initialPosition={{ x: 20, y: 420 }}
-              />
-            )}
+            {showOrdMapper && <OrdMapperPanel initialPosition={{ x: 20, y: 420 }} />}
 
-            {/* API PLACEHOLDER PANELS */}
             {showLms && (
-              <DraggablePanel
-                id="lms-panel"
-                title="LMS Integration"
-                icon={<BookOpen className="h-5 w-5 text-primary" />}
-                description="Connect to Learning Management Systems."
-                initialPosition={{ x: 820, y: 20 }}
-              >
-                <div className="p-4 bg-muted rounded-md text-sm">
-                  Placeholder for LMS data visualization and API settings.
-                </div>
+              <DraggablePanel id="lms-panel" title="LMS Integration" icon={<BookOpen className="h-5 w-5 text-primary" />} description="LMS Placeholder" initialPosition={{ x: 820, y: 20 }}>
+                <div className="p-4 bg-muted rounded-md text-xs">LMS data visualization placeholder.</div>
               </DraggablePanel>
             )}
 
             {showHvac && (
-              <DraggablePanel
-                id="hvac-panel"
-                title="HVAC Analysis"
-                icon={<Wind className="h-5 w-5 text-primary" />}
-                description="Real-time HVAC performance monitoring."
-                initialPosition={{ x: 820, y: 220 }}
-              >
-                <div className="p-4 bg-muted rounded-md text-sm">
-                  Placeholder for Airflow and Temperature analysis charts.
-                </div>
+              <DraggablePanel id="hvac-panel" title="HVAC Analysis" icon={<Wind className="h-5 w-5 text-primary" />} description="HVAC Placeholder" initialPosition={{ x: 820, y: 220 }}>
+                <div className="p-4 bg-muted rounded-md text-xs">HVAC analysis placeholder.</div>
               </DraggablePanel>
             )}
 
             {showFloorLayout && (
-              <DraggablePanel
-                id="floor-layout-panel"
-                title="Floor Layout"
-                icon={<Map className="h-5 w-5 text-primary" />}
-                description="Spatial mapping and zone configuration."
-                initialPosition={{ x: 820, y: 420 }}
-              >
-                <div className="p-4 bg-muted rounded-md text-sm">
-                  Placeholder for floor-plan synchronization tools.
-                </div>
+              <DraggablePanel id="floor-layout-panel" title="Floor Layout" icon={<Map className="h-5 w-5 text-primary" />} description="Floor Layout Placeholder" initialPosition={{ x: 820, y: 420 }}>
+                <div className="p-4 bg-muted rounded-md text-xs">Floor layout sync tools placeholder.</div>
               </DraggablePanel>
             )}
 
@@ -294,13 +246,7 @@ export default function Home() {
           </main>
         </SidebarInset>
 
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          className="hidden"
-          accept=".gltf,.glb"
-        />
+        <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".gltf,.glb" />
       </div>
     </SidebarProvider>
   );
