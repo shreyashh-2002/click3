@@ -3,10 +3,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Button } from "@/components/ui/button";
-import { Upload, SquareAsterisk, Search, Layout, ChevronRight } from 'lucide-react';
+import { Upload, SquareAsterisk, Search, Layout, ChevronRight, Database } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
 import CornersGeneratorPanel from '@/components/corners-generator-panel';
 import MeshSearchPanel, { type MeshInfo } from '@/components/mesh-search-panel';
+import OrdMapperPanel from '@/components/ord-mapper-panel';
 import {
   Sidebar,
   SidebarContent,
@@ -40,6 +41,7 @@ export default function Home() {
   // States for active panels
   const [showCornersGenerator, setShowCornersGenerator] = useState(false);
   const [showMeshSearch, setShowMeshSearch] = useState(false);
+  const [showOrdMapper, setShowOrdMapper] = useState(false);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<MeshInfo[]>([]);
@@ -132,6 +134,17 @@ export default function Home() {
                       </div>
                     </Collapsible>
                   </SidebarMenuItem>
+
+                  <SidebarMenuItem>
+                    <SidebarMenuButton 
+                      onClick={() => setShowOrdMapper(!showOrdMapper)}
+                      isActive={showOrdMapper}
+                      tooltip="ORD Mapping"
+                    >
+                      <Database className="size-4" />
+                      <span>ORD</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
@@ -150,7 +163,6 @@ export default function Home() {
               onSearchResults={handleSearchResults}
             />
 
-            {/* Floating Upload Button - Top Right */}
             <div className="absolute top-4 right-4 z-30 floating-action-button">
               <Button onClick={handleUploadClick} className="shadow-2xl gap-2">
                 <Upload className="size-4" />
@@ -170,6 +182,12 @@ export default function Home() {
                 onSearch={handleSearch}
                 results={searchResults}
                 initialPosition={{ x: 420, y: 20 }}
+              />
+            )}
+
+            {showOrdMapper && (
+              <OrdMapperPanel
+                initialPosition={{ x: 20, y: 420 }}
               />
             )}
 
