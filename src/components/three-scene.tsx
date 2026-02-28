@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
@@ -14,11 +13,9 @@ type ThreeSceneProps = {
   modelUrl: string | null;
   searchTerm: string;
   onSearchResults: (results: MeshInfo[]) => void;
-  yFilter: { y: number; corners?: string; enabled: boolean } | null;
-  onYFilterResults: (results: string[]) => void;
 };
 
-export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSearchResults, yFilter, onYFilterResults }: ThreeSceneProps) {
+export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSearchResults }: ThreeSceneProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
 
@@ -129,7 +126,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSear
 
     const onClick = (event: MouseEvent) => {
         const clickedOnUi = (event.target as HTMLElement).closest(
-            `#${CSS.escape('code-generator-panel')}, #${CSS.escape('corners-generator-panel')}, #${CSS.escape('mesh-search-panel')}, #${CSS.escape('mesh-filter-panel')}, header, [data-sidebar="sidebar"], .floating-action-button`
+            `header, [data-sidebar="sidebar"], .floating-action-button, [id$="-panel"]`
         );
         
         if (!currentModel || clickedOnUi) {
@@ -236,78 +233,6 @@ export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSear
     });
     onSearchResults(results);
 }, [searchTerm, onSearchResults]);
-
-useEffect(() => {
-    if (!yFilter || !yFilter.enabled || !sceneRef.current) {
-        return;
-    };
-
-    const scene = sceneRef.current;
-    const results: string[] = [];
-    let filterBox: THREE.Box3 | null = null;
-
-    if (yFilter.corners) {
-        try {
-            let jsonString = yFilter.corners.trim();
-            // Extract the array part: find the first '[' and last ']'
-            const startIndex = jsonString.indexOf('[');
-            const endIndex = jsonString.lastIndexOf(']');
-
-            if (startIndex !== -1 && endIndex > startIndex) {
-                jsonString = jsonString.substring(startIndex, endIndex + 1);
-                
-                // Robust parsing: remove trailing commas before closing brackets
-                const sanitized = jsonString
-                    .replace(/,\s*([\]}])/g, '$1')
-                    .replace(/'/g, '"');
-                    
-                const parsedCorners = JSON.parse(sanitized);
-                
-                if (Array.isArray(parsedCorners) && parsedCorners.length > 0) {
-                    const points = parsedCorners.map(p => {
-                        if (Array.isArray(p) && p.length >= 3) {
-                            return new THREE.Vector3(p[0], p[1], p[2]);
-                        }
-                        return null;
-                    }).filter((p): p is THREE.Vector3 => p !== null);
-
-                    if (points.length > 0) {
-                        filterBox = new THREE.Box3().setFromPoints(points);
-                        // IMPORTANT: Make the box vertically infinite so it only filters by X and Z area
-                        filterBox.min.y = -10000;
-                        filterBox.max.y = 10000;
-                    }
-                }
-            }
-        } catch (e) {
-            console.error("Generator 4: Could not parse corners. Error:", e);
-        }
-    }
-
-    scene.traverse((object) => {
-        if (object instanceof THREE.Mesh && object.name) {
-            const meshBox = new THREE.Box3().setFromObject(object);
-            
-            if (meshBox.isEmpty()) return;
-
-            // Check if the base of the mesh is above the threshold
-            const yCondition = meshBox.min.y >= yFilter.y;
-            
-            let areaCondition = true;
-            if (filterBox) {
-                // Check if the mesh box intersects with our infinite vertical column
-                areaCondition = filterBox.intersectsBox(meshBox);
-            }
-
-            if (yCondition && areaCondition) {
-                results.push(object.name);
-            }
-        }
-    });
-    
-    onYFilterResults(results);
-}, [yFilter, onYFilterResults]);
-
 
   return <div ref={mountRef} className="w-full h-full absolute top-0 left-0 z-0" />;
 }

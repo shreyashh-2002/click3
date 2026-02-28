@@ -1,15 +1,12 @@
-
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Button } from "@/components/ui/button";
-import { Upload, Code, SquareAsterisk, Search, Filter } from 'lucide-react';
+import { Upload, SquareAsterisk, Search } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
-import CodeGeneratorPanel from '@/components/code-generator-panel';
 import CornersGeneratorPanel from '@/components/corners-generator-panel';
 import MeshSearchPanel, { type MeshInfo } from '@/components/mesh-search-panel';
-import MeshFilterPanel from '@/components/mesh-filter-panel';
 import {
   Sidebar,
   SidebarContent,
@@ -31,16 +28,13 @@ export default function Home() {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isClient, setIsClient] = useState(false);
-  const [showGenerator, setShowGenerator] = useState(false);
+  
+  // States for active panels
   const [showCornersGenerator, setShowCornersGenerator] = useState(false);
   const [showMeshSearch, setShowMeshSearch] = useState(false);
-  const [showMeshFilter, setShowMeshFilter] = useState(false);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<MeshInfo[]>([]);
-
-  const [yFilter, setYFilter] = useState<{y: number, corners?: string, enabled: boolean} | null>(null);
-  const [yFilterResults, setYFilterResults] = useState<string[]>([]);
 
   useEffect(() => {
     setIsClient(true);
@@ -71,15 +65,6 @@ export default function Home() {
     setSearchResults(results);
   }, []);
 
-  const handleFilter = (params: { y: number, corners?: string }) => {
-    setYFilter({ ...params, enabled: true });
-  };
-
-  const handleFilterResults = useCallback((results: string[]) => {
-    setYFilterResults(results);
-    setYFilter(f => f ? { ...f, enabled: false } : null); // Reset trigger
-  }, []);
-
   if (!isClient) {
     return null;
   }
@@ -91,7 +76,7 @@ export default function Home() {
           <SidebarHeader className="border-b border-border/50">
             <div className="flex items-center gap-2 px-2 py-4">
               <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <Code className="size-5" />
+                <SquareAsterisk className="size-5" />
               </div>
               <div className="flex flex-col gap-0.5 overflow-hidden group-data-[collapsible=icon]:hidden">
                 <span className="truncate font-semibold leading-none">Click Tracer</span>
@@ -106,19 +91,9 @@ export default function Home() {
                 <SidebarMenu>
                   <SidebarMenuItem>
                     <SidebarMenuButton 
-                      onClick={() => setShowGenerator(!showGenerator)}
-                      isActive={showGenerator}
-                      tooltip="Generator 1"
-                    >
-                      <Code />
-                      <span>Generator 1</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton 
                       onClick={() => setShowCornersGenerator(!showCornersGenerator)}
                       isActive={showCornersGenerator}
-                      tooltip="Generator 2"
+                      tooltip="Corners Generator"
                     >
                       <SquareAsterisk />
                       <span>Generator 2</span>
@@ -128,20 +103,10 @@ export default function Home() {
                     <SidebarMenuButton 
                       onClick={() => setShowMeshSearch(!showMeshSearch)}
                       isActive={showMeshSearch}
-                      tooltip="Generator 3"
+                      tooltip="Mesh Code Generator"
                     >
                       <Search />
                       <span>Generator 3</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton 
-                      onClick={() => setShowMeshFilter(!showMeshFilter)}
-                      isActive={showMeshFilter}
-                      tooltip="Generator 4"
-                    >
-                      <Filter />
-                      <span>Generator 4</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
@@ -160,8 +125,6 @@ export default function Home() {
               modelUrl={modelUrl}
               searchTerm={searchTerm}
               onSearchResults={handleSearchResults}
-              yFilter={yFilter}
-              onYFilterResults={handleFilterResults}
             />
 
             {/* Floating Upload Button - Top Right */}
@@ -172,17 +135,10 @@ export default function Home() {
               </Button>
             </div>
 
-            {showGenerator && (
-              <CodeGeneratorPanel
-                anchor={sceneClick}
-                initialPosition={{ x: 20, y: 20 }}
-              />
-            )}
-
             {showCornersGenerator && (
               <CornersGeneratorPanel
                 lastClick={sceneClick}
-                initialPosition={{ x: 410, y: 20 }}
+                initialPosition={{ x: 20, y: 20 }}
               />
             )}
             
@@ -190,15 +146,7 @@ export default function Home() {
               <MeshSearchPanel
                 onSearch={handleSearch}
                 results={searchResults}
-                initialPosition={{ x: 800, y: 20 }}
-              />
-            )}
-
-            {showMeshFilter && (
-              <MeshFilterPanel
-                onFilter={handleFilter}
-                results={yFilterResults}
-                initialPosition={{ x: 1190, y: 20 }}
+                initialPosition={{ x: 420, y: 20 }}
               />
             )}
 
