@@ -83,7 +83,7 @@ export default function MeshExtractionPanel({ onExtract, results, initialPositio
         
         toast({
             title: "Extraction Started",
-            description: `Searching for meshes above Y=${threshold}...`,
+            description: `Searching for meshes strictly above Y=${threshold}...`,
         });
     };
 
@@ -99,13 +99,13 @@ export default function MeshExtractionPanel({ onExtract, results, initialPositio
             id="mesh-extraction-panel"
             title="Mesh Extraction"
             icon={<Layers className="h-5 w-5 text-primary" />}
-            description="Extract meshes within a boundary and above a Y threshold."
+            description="Extract meshes within a boundary and strictly above a Y threshold."
             initialPosition={initialPosition}
             className="w-96"
         >
             <div className="space-y-4">
                 <div className="space-y-2">
-                    <Label>Y-Axis Threshold (Meshes &gt; Y)</Label>
+                    <Label>Y-Axis Threshold (Meshes {`>`} Y)</Label>
                     <Input
                         type="number"
                         step="0.1"
