@@ -69,9 +69,6 @@ export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSear
     let intersectionMarker: THREE.Mesh | null = null;
 
     const setupModel = (model: THREE.Object3D) => {
-        const box = new THREE.Box3().setFromObject(model);
-        const center = box.getCenter(new THREE.Vector3());
-        
         model.traverse((child) => {
             if ((child as THREE.Mesh).isMesh) {
                 child.castShadow = true;
@@ -79,8 +76,8 @@ export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSear
             }
         });
         
-        model.position.sub(center); 
-        model.position.y -= box.min.y;
+        // Set EXACT position as requested: X: -3.0086, Y: 1.8078, Z: 0.0286
+        model.position.set(-3.0086, 1.8078, 0.0286);
 
         if (currentModel) {
             scene.remove(currentModel);
