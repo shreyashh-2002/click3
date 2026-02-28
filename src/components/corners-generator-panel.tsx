@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
@@ -86,7 +85,7 @@ export default function CornersGeneratorPanel({ lastClick, initialPosition }: Co
     return (
         <DraggablePanel
             id="corners-generator-panel"
-            title="Corners Generator"
+            title="Coordinates"
             icon={<SquareAsterisk className="h-5 w-5 text-primary" />}
             description="Select 4, 6 or 8 points to generate a corners array."
             initialPosition={initialPosition}

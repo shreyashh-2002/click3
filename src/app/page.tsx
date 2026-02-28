@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Button } from "@/components/ui/button";
-import { Upload, SquareAsterisk, Search } from 'lucide-react';
+import { Upload, SquareAsterisk, Search, Layout, ChevronRight } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
 import CornersGeneratorPanel from '@/components/corners-generator-panel';
 import MeshSearchPanel, { type MeshInfo } from '@/components/mesh-search-panel';
@@ -21,7 +21,15 @@ import {
   SidebarTrigger,
   SidebarInset,
   SidebarFooter,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
 } from "@/components/ui/sidebar"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 
 export default function Home() {
   const [sceneClick, setSceneClick] = useState<THREE.Vector3 | null>(null);
@@ -86,28 +94,43 @@ export default function Home() {
           </SidebarHeader>
           <SidebarContent>
             <SidebarGroup>
-              <SidebarGroupLabel>Generators</SidebarGroupLabel>
+              <SidebarGroupLabel>Menu</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton 
-                      onClick={() => setShowCornersGenerator(!showCornersGenerator)}
-                      isActive={showCornersGenerator}
-                      tooltip="Corners Generator"
-                    >
-                      <SquareAsterisk />
-                      <span>Generator 2</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton 
-                      onClick={() => setShowMeshSearch(!showMeshSearch)}
-                      isActive={showMeshSearch}
-                      tooltip="Mesh Code Generator"
-                    >
-                      <Search />
-                      <span>Generator 3</span>
-                    </SidebarMenuButton>
+                    <Collapsible asChild defaultOpen className="group/collapsible">
+                      <div>
+                        <CollapsibleTrigger asChild>
+                          <SidebarMenuButton tooltip="UI Options">
+                            <Layout className="size-4" />
+                            <span>UI</span>
+                            <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                          </SidebarMenuButton>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <SidebarMenuSub>
+                            <SidebarMenuSubItem>
+                              <SidebarMenuSubButton 
+                                onClick={() => setShowCornersGenerator(!showCornersGenerator)}
+                                isActive={showCornersGenerator}
+                              >
+                                <SquareAsterisk className="size-4 mr-2" />
+                                <span>Coordinates</span>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                            <SidebarMenuSubItem>
+                              <SidebarMenuSubButton 
+                                onClick={() => setShowMeshSearch(!showMeshSearch)}
+                                isActive={showMeshSearch}
+                              >
+                                <Search className="size-4 mr-2" />
+                                <span>Mesh Extraction</span>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          </SidebarMenuSub>
+                        </CollapsibleContent>
+                      </div>
+                    </Collapsible>
                   </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>

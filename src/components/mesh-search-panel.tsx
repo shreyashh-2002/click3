@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -68,7 +67,7 @@ export default function MeshSearchPanel({ onSearch, results, initialPosition }: 
     return (
         <DraggablePanel
             id="mesh-search-panel"
-            title="Mesh Code Generator"
+            title="Mesh Extraction"
             icon={<Search className="h-5 w-5 text-primary" />}
             description="Search for meshes by name and generate code."
             initialPosition={initialPosition}
