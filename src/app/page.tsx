@@ -143,29 +143,26 @@ export default function Home() {
 
                   {/* ORD SECTION */}
                   <SidebarMenuItem>
-                    <SidebarMenuButton 
-                      onClick={() => setShowOrdMapper(!showOrdMapper)}
-                      isActive={showOrdMapper}
-                      tooltip="ORD Mapping"
-                    >
-                      <Database className="size-4" />
-                      <span>ORD</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-
-                  {/* API SECTION */}
-                  <SidebarMenuItem>
                     <Collapsible asChild className="group/collapsible">
                       <div>
                         <CollapsibleTrigger asChild>
-                          <SidebarMenuButton tooltip="API Integrations">
+                          <SidebarMenuButton tooltip="ORD Options">
                             <Database className="size-4" />
-                            <span>API</span>
+                            <span>ORD</span>
                             <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                           </SidebarMenuButton>
                         </CollapsibleTrigger>
                         <CollapsibleContent>
                           <SidebarMenuSub>
+                            <SidebarMenuSubItem>
+                              <SidebarMenuSubButton 
+                                onClick={() => setShowOrdMapper(!showOrdMapper)}
+                                isActive={showOrdMapper}
+                              >
+                                <Database className="size-4 mr-2" />
+                                <span>ORD Mapper</span>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
                             <SidebarMenuSubItem>
                               <SidebarMenuSubButton 
                                 onClick={() => setShowLms(!showLms)}
