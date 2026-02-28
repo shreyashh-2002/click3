@@ -129,7 +129,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSear
 
     const onClick = (event: MouseEvent) => {
         const clickedOnUi = (event.target as HTMLElement).closest(
-            `#${CSS.escape('code-generator-panel')}, #${CSS.escape('corners-generator-panel')}, #${CSS.escape('mesh-search-panel')}, #${CSS.escape('mesh-filter-panel')}, header`
+            `#${CSS.escape('code-generator-panel')}, #${CSS.escape('corners-generator-panel')}, #${CSS.escape('mesh-search-panel')}, #${CSS.escape('mesh-filter-panel')}, header, [data-sidebar="sidebar"]`
         );
         
         if (!currentModel || clickedOnUi) {
