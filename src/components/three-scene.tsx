@@ -168,7 +168,6 @@ export default function ThreeScene({ onCoordChange, modelUrl, searchTerm, onSear
     };
     animate();
 
-    // Use ResizeObserver for dynamic resizing (responsive to sidebar changes)
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
@@ -249,13 +248,20 @@ useEffect(() => {
 
     if (yFilter.corners) {
         try {
-            let jsonString = yFilter.corners;
+            let jsonString = yFilter.corners.trim();
+            // Extract the array part: find the first '[' and last ']'
             const startIndex = jsonString.indexOf('[');
             const endIndex = jsonString.lastIndexOf(']');
 
             if (startIndex !== -1 && endIndex > startIndex) {
                 jsonString = jsonString.substring(startIndex, endIndex + 1);
-                const parsedCorners = JSON.parse(jsonString);
+                
+                // Robust parsing: remove trailing commas before closing brackets
+                const sanitized = jsonString
+                    .replace(/,\s*([\]}])/g, '$1')
+                    .replace(/'/g, '"');
+                    
+                const parsedCorners = JSON.parse(sanitized);
                 
                 if (Array.isArray(parsedCorners) && parsedCorners.length > 0) {
                     const points = parsedCorners.map(p => {
@@ -267,14 +273,14 @@ useEffect(() => {
 
                     if (points.length > 0) {
                         filterBox = new THREE.Box3().setFromPoints(points);
-                        // Make the box infinitely tall to only check X and Z bounds
-                        filterBox.min.y = -Infinity;
-                        filterBox.max.y = Infinity;
+                        // IMPORTANT: Make the box vertically infinite so it only filters by X and Z area
+                        filterBox.min.y = -10000;
+                        filterBox.max.y = 10000;
                     }
                 }
             }
         } catch (e) {
-            console.error("Could not parse corners. Ensure it's a valid JSON array string.", e);
+            console.error("Generator 4: Could not parse corners. Error:", e);
         }
     }
 
@@ -282,14 +288,14 @@ useEffect(() => {
         if (object instanceof THREE.Mesh && object.name) {
             const meshBox = new THREE.Box3().setFromObject(object);
             
-            if (meshBox.isEmpty()) {
-                return;
-            }
+            if (meshBox.isEmpty()) return;
 
-            const yCondition = meshBox.min.y > yFilter.y;
+            // Check if the base of the mesh is above the threshold
+            const yCondition = meshBox.min.y >= yFilter.y;
             
             let areaCondition = true;
             if (filterBox) {
+                // Check if the mesh box intersects with our infinite vertical column
                 areaCondition = filterBox.intersectsBox(meshBox);
             }
 
@@ -298,6 +304,7 @@ useEffect(() => {
             }
         }
     });
+    
     onYFilterResults(results);
 }, [yFilter, onYFilterResults]);
 
