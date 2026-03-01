@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useRef } from "react";
@@ -37,7 +38,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
 
     // Initialize Camera
     const camera = new THREE.PerspectiveCamera(50, currentMount.clientWidth / currentMount.clientHeight, 0.1, 5000);
-    camera.position.set(-5.58, 44.30, 74.58);
+    camera.position.set(0, 50, 100);
     cameraRef.current = camera;
 
     // Initialize Renderer
@@ -77,7 +78,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     // Setup Controls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.target.set(-4.8, -3.1, 2.2);
+    controls.target.set(0, 0, 0);
 
     // Setup Lighting
     scene.add(new THREE.AmbientLight(0xffffff, 2.0));
@@ -93,13 +94,19 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
           child.receiveShadow = true;
         }
       });
-      // RECALIBRATED POSITION based on user coordinates
-      model.position.set(-10.7668, 2.3204, -9.2293);
+      
+      // PRECISE RECALIBRATION
+      // Corrected root position to align local points with desired world coordinates
+      model.position.set(1.2873, -1.367, -9.401);
       
       if (modelRef.current) scene.remove(modelRef.current);
       scene.add(model);
       modelRef.current = model;
       onCoordChange(null);
+      
+      // Move camera to look at the new model position
+      camera.lookAt(model.position);
+      controls.target.copy(model.position);
     };
 
     const createFallback = () => {
@@ -146,8 +153,8 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         const point = intersects[0].point;
         onCoordChange(point.clone());
         if (!marker) {
-          // Reduced marker size from 0.3 to 0.15
-          marker = new THREE.Mesh(new THREE.SphereGeometry(0.15), new THREE.MeshBasicMaterial({ color: 0x8b5cf6 }));
+          // Reduced marker size to 0.1 for better precision
+          marker = new THREE.Mesh(new THREE.SphereGeometry(0.1), new THREE.MeshBasicMaterial({ color: 0x8b5cf6 }));
           scene.add(marker);
         }
         marker.position.copy(point);
