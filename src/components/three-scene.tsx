@@ -31,17 +31,14 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     const currentMount = mountRef.current;
     if (!currentMount) return;
 
-    // Initialize Scene
     const scene = new THREE.Scene();
     sceneRef.current = scene;
     scene.background = new THREE.Color(0x111111);
 
-    // Initialize Camera
     const camera = new THREE.PerspectiveCamera(50, currentMount.clientWidth / currentMount.clientHeight, 0.1, 5000);
     camera.position.set(0, 50, 100);
     cameraRef.current = camera;
 
-    // Initialize Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(currentMount.clientWidth, currentMount.clientHeight);
@@ -51,7 +48,6 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     currentMount.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Handle Resize (Responsive to sidebar changes)
     const resizeObserver = new ResizeObserver(() => {
       if (!currentMount || !cameraRef.current || !rendererRef.current) return;
       const width = currentMount.clientWidth;
@@ -63,7 +59,6 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     });
     resizeObserver.observe(currentMount);
 
-    // Setup Loaders
     const dracoLoader = new DRACOLoader();
     dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
 
@@ -75,12 +70,10 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     gltfLoader.setDRACOLoader(dracoLoader);
     gltfLoader.setKTX2Loader(ktx2Loader);
 
-    // Setup Controls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.target.set(0, 0, 0);
 
-    // Setup Lighting
     scene.add(new THREE.AmbientLight(0xffffff, 2.0));
     const dirLight = new THREE.DirectionalLight(0xffffff, 2.5);
     dirLight.position.set(50, 100, 50);
@@ -95,9 +88,8 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         }
       });
       
-      // PRECISE RECALIBRATION based on Point 1 and Point 2 reference
-      // Calculations: Delta X: +7.7853, Delta Y: -0.5126, Delta Z: +9.2478
-      // Applied to previous calibration (1.2873, -1.367, -9.401)
+      // PRECISE RECALIBRATION based on offsets provided for Point 1 and Point 2
+      // Calculation: Shifting model root so current P1 matches target P1.
       model.position.set(9.0726, -1.8796, -0.1532);
       
       if (modelRef.current) scene.remove(modelRef.current);
@@ -105,7 +97,6 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
       modelRef.current = model;
       onCoordChange(null);
       
-      // Move camera to look at the new model position
       camera.lookAt(model.position);
       controls.target.copy(model.position);
     };
@@ -117,7 +108,6 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
       setupModel(mesh);
     };
 
-    // Load Model
     if (modelUrl) {
       gltfLoader.load(
         modelUrl, 
@@ -134,7 +124,6 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
       createFallback();
     }
 
-    // Interaction logic
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     let marker: THREE.Mesh | null = null;
@@ -154,8 +143,8 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         const point = intersects[0].point;
         onCoordChange(point.clone());
         if (!marker) {
-          // Reduced marker size to 0.05 for extreme precision
-          marker = new THREE.Mesh(new THREE.SphereGeometry(0.05), new THREE.MeshBasicMaterial({ color: 0x8b5cf6 }));
+          // Click marker size set to 1.5 as requested
+          marker = new THREE.Mesh(new THREE.SphereGeometry(1.5), new THREE.MeshBasicMaterial({ color: 0x8b5cf6 }));
           scene.add(marker);
         }
         marker.position.copy(point);
@@ -164,7 +153,6 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
 
     currentMount.addEventListener('click', onClick);
 
-    // Animation Loop
     let frameId: number;
     const animate = () => {
       frameId = requestAnimationFrame(animate);
@@ -173,7 +161,6 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     };
     animate();
 
-    // Cleanup
     return () => {
       cancelAnimationFrame(frameId);
       currentMount.removeEventListener('click', onClick);
@@ -187,14 +174,12 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     };
   }, [modelUrl, onCoordChange]);
 
-  // Spatial Extraction Effect
   useEffect(() => {
     if (!extractionParams || !modelRef.current) return;
 
     const { yThreshold, corners } = extractionParams;
     const results: string[] = [];
 
-    // Point-in-Polygon logic for XZ plane
     const isInside = (x: number, z: number, poly: number[][]) => {
       let inside = false;
       for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -220,7 +205,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         const center = new THREE.Vector3();
         box.getCenter(center);
 
-        // Precision check: Mesh base (min.y) must be at or above threshold
+        // Strict Y-threshold check: mesh base must be at or above user input
         if (box.min.y >= yThreshold) {
           if (corners.length === 0 || isInside(center.x, center.z, corners)) {
             results.push(object.name || `Unnamed Mesh (${object.uuid.slice(0, 5)})`);
