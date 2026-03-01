@@ -91,8 +91,8 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
       // RECALIBRATION: 
       // Point 1: Current(-12.0885, 3.6874, 0.1396) -> Target(-10.7668, 2.3204, -9.2293)
       // Point 2: Current(-8.0933, 3.6874, 0.1305)  -> Target(-6.8058, 2.3204, -9.2147)
-      // Calculated Average Offset: X: +1.3046, Y: -1.3670, Z: -9.3571
-      model.position.set(1.3046, -1.3670, -9.3571);
+      // Applying shift to world position to align clicks with target survey coordinates.
+      model.position.set(2.6092, -2.7340, -18.7142);
       
       if (modelRef.current) scene.remove(modelRef.current);
       scene.add(model);
