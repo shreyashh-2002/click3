@@ -93,7 +93,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
           child.receiveShadow = true;
         }
       });
-      // RECALIBRATED POSITION
+      // RECALIBRATED POSITION based on user coordinates
       model.position.set(-10.7668, 2.3204, -9.2293);
       
       if (modelRef.current) scene.remove(modelRef.current);
@@ -146,7 +146,8 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         const point = intersects[0].point;
         onCoordChange(point.clone());
         if (!marker) {
-          marker = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({ color: 0x8b5cf6 }));
+          // Reduced marker size from 0.3 to 0.15
+          marker = new THREE.Mesh(new THREE.SphereGeometry(0.15), new THREE.MeshBasicMaterial({ color: 0x8b5cf6 }));
           scene.add(marker);
         }
         marker.position.copy(point);
@@ -211,7 +212,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         const center = new THREE.Vector3();
         box.getCenter(center);
 
-        // Precision check: Mesh base (min.y) must be strictly at or above threshold
+        // Precision check: Mesh base (min.y) must be at or above threshold
         if (box.min.y >= yThreshold) {
           if (corners.length === 0 || isInside(center.x, center.z, corners)) {
             results.push(object.name || `Unnamed Mesh (${object.uuid.slice(0, 5)})`);
