@@ -88,10 +88,11 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         }
       });
       
-      // RECALIBRATION: Shifting model root so current reference points match target coordinates
-      // Point 1: Current(-18.5392, 2.8330, -18.4621) -> Target(-10.7668, 2.3204, -9.2293)
-      // Delta: X=7.7724, Y=-0.5126, Z=9.2328
-      model.position.set(7.7724, -0.5126, 9.2328);
+      // RECALIBRATION: 
+      // Point 1: Current(-12.0885, 3.6874, 0.1396) -> Target(-10.7668, 2.3204, -9.2293)
+      // Point 2: Current(-8.0933, 3.6874, 0.1305)  -> Target(-6.8058, 2.3204, -9.2147)
+      // Calculated Average Offset: X: +1.3046, Y: -1.3670, Z: -9.3571
+      model.position.set(1.3046, -1.3670, -9.3571);
       
       if (modelRef.current) scene.remove(modelRef.current);
       scene.add(model);
@@ -205,7 +206,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         const center = new THREE.Vector3();
         box.getCenter(center);
 
-        // Precision check: Mesh base (min.y) must be strictly at or above the threshold
+        // Strict precision check: Mesh base (min.y) must be strictly at or above the threshold
         if (box.min.y >= yThreshold) {
           if (corners.length === 0 || isInside(center.x, center.z, corners)) {
             results.push(object.name || `Unnamed Mesh (${object.uuid.slice(0, 5)})`);
