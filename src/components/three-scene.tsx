@@ -81,6 +81,10 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     scene.add(dirLight);
 
     const setupModel = (model: THREE.Object3D) => {
+      // POSITIONING LOGIC: Center and Ground
+      const box = new THREE.Box3().setFromObject(model);
+      const center = box.getCenter(new THREE.Vector3());
+      
       model.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           child.castShadow = true;
@@ -88,17 +92,17 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         }
       });
       
-      // MANUALLY ADJUST THE MODEL POSITION HERE
-      // Current Calibration Offset: X: 1.3046, Y: -1.3670, Z: -9.3571
-      model.position.set(1.3046, -1.3670, -9.3571);
+      // Center the model on X and Z, and place bottom at Y=0
+      model.position.sub(center); 
+      model.position.y -= box.min.y;
       
       if (modelRef.current) scene.remove(modelRef.current);
       scene.add(model);
       modelRef.current = model;
       onCoordChange(null);
       
-      camera.lookAt(model.position);
-      controls.target.copy(model.position);
+      camera.lookAt(0, 0, 0);
+      controls.target.set(0, 0, 0);
     };
 
     const createFallback = () => {
@@ -143,6 +147,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         const point = intersects[0].point;
         onCoordChange(point.clone());
         if (!marker) {
+          // Marker Size: 0.15
           marker = new THREE.Mesh(new THREE.SphereGeometry(0.15), new THREE.MeshBasicMaterial({ color: 0x8b5cf6 }));
           scene.add(marker);
         }
@@ -204,6 +209,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         const center = new THREE.Vector3();
         box.getCenter(center);
 
+        // Strict precision check: Mesh base (min.y) must be strictly at or above the threshold
         if (box.min.y >= yThreshold) {
           if (corners.length === 0 || isInside(center.x, center.z, corners)) {
             results.push(object.name || `Unnamed Mesh (${object.uuid.slice(0, 5)})`);
