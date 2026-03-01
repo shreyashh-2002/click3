@@ -88,9 +88,10 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         }
       });
       
-      // PRECISE RECALIBRATION based on offsets provided for Point 1 and Point 2
-      // Calculation: Shifting model root so current P1 matches target P1.
-      model.position.set(9.0726, -1.8796, -0.1532);
+      // RECALIBRATION: Shifting model root so current reference points match target coordinates
+      // Target Point 1: -10.7668, 2.3204, -9.2293 | Current: -18.5392, 2.8330, -18.4621
+      // Delta: X=7.7724, Y=-0.5126, Z=9.2328
+      model.position.set(7.7724, -0.5126, 9.2328);
       
       if (modelRef.current) scene.remove(modelRef.current);
       scene.add(model);
@@ -143,8 +144,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         const point = intersects[0].point;
         onCoordChange(point.clone());
         if (!marker) {
-          // Click marker size set to 1.5 as requested
-          marker = new THREE.Mesh(new THREE.SphereGeometry(1.5), new THREE.MeshBasicMaterial({ color: 0x8b5cf6 }));
+          marker = new THREE.Mesh(new THREE.SphereGeometry(0.15), new THREE.MeshBasicMaterial({ color: 0x8b5cf6 }));
           scene.add(marker);
         }
         marker.position.copy(point);
@@ -205,7 +205,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         const center = new THREE.Vector3();
         box.getCenter(center);
 
-        // Strict Y-threshold check: mesh base must be at or above user input
+        // Precision check: Mesh base (min.y) must be strictly at or above the threshold
         if (box.min.y >= yThreshold) {
           if (corners.length === 0 || isInside(center.x, center.z, corners)) {
             results.push(object.name || `Unnamed Mesh (${object.uuid.slice(0, 5)})`);
