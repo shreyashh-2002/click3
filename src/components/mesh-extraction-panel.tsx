@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -105,7 +106,7 @@ export default function MeshExtractionPanel({ onExtract, results, initialPositio
         >
             <div className="space-y-4">
                 <div className="space-y-2">
-                    <Label>Y-Axis Threshold (Meshes {`>`} Y)</Label>
+                    <Label>Y-Axis Threshold (Meshes {'>'} Y)</Label>
                     <Input
                         type="number"
                         step="0.1"
