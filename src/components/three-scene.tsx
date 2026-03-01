@@ -89,7 +89,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
       });
       
       // RECALIBRATION: Shifting model root so current reference points match target coordinates
-      // Target Point 1: -10.7668, 2.3204, -9.2293 | Current: -18.5392, 2.8330, -18.4621
+      // Point 1: Current(-18.5392, 2.8330, -18.4621) -> Target(-10.7668, 2.3204, -9.2293)
       // Delta: X=7.7724, Y=-0.5126, Z=9.2328
       model.position.set(7.7724, -0.5126, 9.2328);
       
