@@ -93,8 +93,8 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
           child.receiveShadow = true;
         }
       });
-      // EXACT POSITION REQUESTED
-      model.position.set(-3.0086, 1.8078, 0.0286);
+      // RECALIBRATED POSITION
+      model.position.set(-10.7668, 2.3204, -9.2293);
       
       if (modelRef.current) scene.remove(modelRef.current);
       scene.add(model);
@@ -189,7 +189,6 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     const isInside = (x: number, z: number, poly: number[][]) => {
       let inside = false;
       for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-        // Handle both [x, y, z] and [x, z] coordinate formats
         const xi = poly[i][0];
         const zi = poly[i].length === 3 ? poly[i][2] : poly[i][1];
         const xj = poly[j][0];
@@ -201,12 +200,10 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
       return inside;
     };
 
-    // Ensure world matrices are fully updated before calculating bounds
     modelRef.current.updateMatrixWorld(true);
 
     modelRef.current.traverse((object) => {
       if (object instanceof THREE.Mesh) {
-        // Calculate the absolute world-space bounding box for maximum precision
         const box = new THREE.Box3().setFromObject(object);
         
         if (box.isEmpty()) return;
@@ -214,11 +211,8 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         const center = new THREE.Vector3();
         box.getCenter(center);
 
-        // FILTER PRECISION:
-        // We check if the MINIMUM Y of the bounding box is above or equal to the threshold.
-        // This ensures the mesh is physically located at or above that vertical plane.
+        // Precision check: Mesh base (min.y) must be strictly at or above threshold
         if (box.min.y >= yThreshold) {
-          // Then check if the geometric center falls within the XZ boundaries
           if (corners.length === 0 || isInside(center.x, center.z, corners)) {
             results.push(object.name || `Unnamed Mesh (${object.uuid.slice(0, 5)})`);
           }
