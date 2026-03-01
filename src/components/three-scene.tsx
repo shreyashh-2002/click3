@@ -95,9 +95,10 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         }
       });
       
-      // PRECISE RECALIBRATION
-      // Corrected root position to align local points with desired world coordinates
-      model.position.set(1.2873, -1.367, -9.401);
+      // PRECISE RECALIBRATION based on Point 1 and Point 2 reference
+      // Calculations: Delta X: +7.7853, Delta Y: -0.5126, Delta Z: +9.2478
+      // Applied to previous calibration (1.2873, -1.367, -9.401)
+      model.position.set(9.0726, -1.8796, -0.1532);
       
       if (modelRef.current) scene.remove(modelRef.current);
       scene.add(model);
@@ -153,8 +154,8 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         const point = intersects[0].point;
         onCoordChange(point.clone());
         if (!marker) {
-          // Reduced marker size to 0.1 for better precision
-          marker = new THREE.Mesh(new THREE.SphereGeometry(0.1), new THREE.MeshBasicMaterial({ color: 0x8b5cf6 }));
+          // Reduced marker size to 0.05 for extreme precision
+          marker = new THREE.Mesh(new THREE.SphereGeometry(0.05), new THREE.MeshBasicMaterial({ color: 0x8b5cf6 }));
           scene.add(marker);
         }
         marker.position.copy(point);
