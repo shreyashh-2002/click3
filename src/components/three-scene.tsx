@@ -6,6 +6,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
 type ExtractionParams = {
   yThreshold: number;
@@ -65,6 +66,7 @@ export default function ThreeScene({
     });
     resizeObserver.observe(currentMount);
 
+    // Setup Loaders
     const dracoLoader = new DRACOLoader();
     dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
 
@@ -75,6 +77,7 @@ export default function ThreeScene({
     const gltfLoader = new GLTFLoader();
     gltfLoader.setDRACOLoader(dracoLoader);
     gltfLoader.setKTX2Loader(ktx2Loader);
+    gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -87,7 +90,7 @@ export default function ThreeScene({
     scene.add(dirLight);
 
     const setupModel = (model: THREE.Object3D) => {
-      // EXACT POSITIONING LOGIC AS REQUESTED
+      // EXACT POSITIONING LOGIC AS SPECIFIED
       const box = new THREE.Box3().setFromObject(model);
       const center = box.getCenter(new THREE.Vector3());
       
