@@ -3,12 +3,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Button } from "@/components/ui/button";
-import { Upload, SquareAsterisk, Search, Layout, ChevronRight, Database, BookOpen, Wind, Map, Layers } from 'lucide-react';
+import { Upload, SquareAsterisk, Layout, ChevronRight, Database, BookOpen, Wind, Map, Layers, Copy, Check } from 'lucide-react';
 import ThreeScene from '@/components/three-scene';
 import CornersGeneratorPanel from '@/components/corners-generator-panel';
 import MeshExtractionPanel from '@/components/mesh-extraction-panel';
 import OrdMapperPanel from '@/components/ord-mapper-panel';
 import DraggablePanel from '@/components/draggable-panel';
+import { useToast } from '@/hooks/use-toast';
 import {
   Sidebar,
   SidebarContent,
@@ -35,9 +36,12 @@ import {
 
 export default function Home() {
   const [sceneClick, setSceneClick] = useState<THREE.Vector3 | null>(null);
+  const [selectedMesh, setSelectedMesh] = useState<string | null>(null);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isClient, setIsClient] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
+  const { toast } = useToast();
   
   const [showCoordinates, setShowCoordinates] = useState(false);
   const [showMeshExtraction, setShowMeshExtraction] = useState(false);
@@ -57,12 +61,30 @@ export default function Home() {
     setSceneClick(newCoords);
   }, []);
 
+  const handleMeshSelect = useCallback((name: string | null) => {
+    setSelectedMesh(name);
+    setIsCopied(false);
+  }, []);
+
+  const handleCopyMeshName = () => {
+    if (selectedMesh) {
+      navigator.clipboard.writeText(selectedMesh);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+      toast({
+        title: "Copied!",
+        description: "Mesh name copied to clipboard.",
+      });
+    }
+  };
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       const url = URL.createObjectURL(file);
       setModelUrl(url);
       setSceneClick(null);
+      setSelectedMesh(null);
     }
   };
 
@@ -189,10 +211,33 @@ export default function Home() {
           <main className="flex-1 relative overflow-hidden">
             <ThreeScene 
               onCoordChange={handleCoordChange} 
+              onMeshSelect={handleMeshSelect}
               modelUrl={modelUrl}
               extractionParams={extractionParams}
               onExtractionResults={handleExtractionResults}
             />
+
+            {/* Mesh Name Overlay (Top Left) */}
+            {selectedMesh && (
+              <div className="absolute top-4 left-4 z-40 mesh-name-overlay">
+                <div className="flex items-center gap-2 p-3 bg-background/90 backdrop-blur-md border border-border shadow-2xl rounded-lg animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Selected Mesh</span>
+                    <span className="text-sm font-mono font-medium text-primary truncate max-w-[250px]" title={selectedMesh}>
+                      {selectedMesh}
+                    </span>
+                  </div>
+                  <Button 
+                    size="icon" 
+                    variant="ghost" 
+                    className="size-8 ml-2 hover:bg-primary/10 hover:text-primary transition-colors"
+                    onClick={handleCopyMeshName}
+                  >
+                    {isCopied ? <Check className="size-4 text-green-500" /> : <Copy className="size-4" />}
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <div className="absolute top-4 right-4 z-30 floating-action-button">
               <Button onClick={handleUploadClick} className="shadow-2xl gap-2">
@@ -204,7 +249,7 @@ export default function Home() {
             {showCoordinates && (
               <CornersGeneratorPanel
                 lastClick={sceneClick}
-                initialPosition={{ x: 20, y: 20 }}
+                initialPosition={{ x: 20, y: 100 }}
               />
             )}
             
@@ -212,26 +257,26 @@ export default function Home() {
               <MeshExtractionPanel
                 onExtract={setExtractionParams}
                 results={extractionResults}
-                initialPosition={{ x: 420, y: 20 }}
+                initialPosition={{ x: 420, y: 100 }}
               />
             )}
 
-            {showOrdMapper && <OrdMapperPanel initialPosition={{ x: 20, y: 420 }} />}
+            {showOrdMapper && <OrdMapperPanel initialPosition={{ x: 20, y: 500 }} />}
 
             {showLms && (
-              <DraggablePanel id="lms-panel" title="LMS Integration" icon={<BookOpen className="h-5 w-5 text-primary" />} description="LMS Placeholder" initialPosition={{ x: 820, y: 20 }}>
+              <DraggablePanel id="lms-panel" title="LMS Integration" icon={<BookOpen className="h-5 w-5 text-primary" />} description="LMS Placeholder" initialPosition={{ x: 820, y: 100 }}>
                 <div className="p-4 bg-muted rounded-md text-xs">LMS data visualization placeholder.</div>
               </DraggablePanel>
             )}
 
             {showHvac && (
-              <DraggablePanel id="hvac-panel" title="HVAC Analysis" icon={<Wind className="h-5 w-5 text-primary" />} description="HVAC Placeholder" initialPosition={{ x: 820, y: 220 }}>
+              <DraggablePanel id="hvac-panel" title="HVAC Analysis" icon={<Wind className="h-5 w-5 text-primary" />} description="HVAC Placeholder" initialPosition={{ x: 820, y: 300 }}>
                 <div className="p-4 bg-muted rounded-md text-xs">HVAC analysis placeholder.</div>
               </DraggablePanel>
             )}
 
             {showFloorLayout && (
-              <DraggablePanel id="floor-layout-panel" title="Floor Layout" icon={<Map className="h-5 w-5 text-primary" />} description="Floor Layout Placeholder" initialPosition={{ x: 820, y: 420 }}>
+              <DraggablePanel id="floor-layout-panel" title="Floor Layout" icon={<Map className="h-5 w-5 text-primary" />} description="Floor Layout Placeholder" initialPosition={{ x: 820, y: 500 }}>
                 <div className="p-4 bg-muted rounded-md text-xs">Floor layout sync tools placeholder.</div>
               </DraggablePanel>
             )}

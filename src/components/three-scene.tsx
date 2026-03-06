@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useRef } from "react";
@@ -15,12 +14,19 @@ type ExtractionParams = {
 
 type ThreeSceneProps = {
   onCoordChange: (coords: THREE.Vector3 | null) => void;
+  onMeshSelect: (name: string | null) => void;
   modelUrl: string | null;
   extractionParams: ExtractionParams | null;
   onExtractionResults: (results: string[]) => void;
 };
 
-export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, onExtractionResults }: ThreeSceneProps) {
+export default function ThreeScene({ 
+  onCoordChange, 
+  onMeshSelect,
+  modelUrl, 
+  extractionParams, 
+  onExtractionResults 
+}: ThreeSceneProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const modelRef = useRef<THREE.Object3D | null>(null);
@@ -81,7 +87,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     scene.add(dirLight);
 
     const setupModel = (model: THREE.Object3D) => {
-      // POSITIONING LOGIC: Center and Ground
+      // EXACT POSITIONING LOGIC AS REQUESTED
       const box = new THREE.Box3().setFromObject(model);
       const center = box.getCenter(new THREE.Vector3());
       
@@ -100,6 +106,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
       scene.add(model);
       modelRef.current = model;
       onCoordChange(null);
+      onMeshSelect(null);
       
       camera.lookAt(0, 0, 0);
       controls.target.set(0, 0, 0);
@@ -109,6 +116,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
       const geometry = new THREE.TorusKnotGeometry(10, 3, 128, 16);
       const material = new THREE.MeshStandardMaterial({ color: 0x7c3aed, roughness: 0.3, metalness: 0.8 });
       const mesh = new THREE.Mesh(geometry, material);
+      mesh.name = "Fallback TorusKnot";
       setupModel(mesh);
     };
 
@@ -133,7 +141,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
     let marker: THREE.Mesh | null = null;
 
     const onClick = (event: MouseEvent) => {
-      const clickedOnUi = (event.target as HTMLElement).closest(`header, [data-sidebar="sidebar"], .floating-action-button, [id$="-panel"]`);
+      const clickedOnUi = (event.target as HTMLElement).closest(`header, [data-sidebar="sidebar"], .floating-action-button, [id$="-panel"], .mesh-name-overlay`);
       if (!modelRef.current || clickedOnUi) return;
 
       const rect = currentMount.getBoundingClientRect();
@@ -144,7 +152,13 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
       const intersects = raycaster.intersectObject(modelRef.current, true);
 
       if (intersects.length > 0) {
-        const point = intersects[0].point;
+        const intersection = intersects[0];
+        const point = intersection.point;
+        
+        // Update selected mesh name
+        const meshName = intersection.object.name || `Unnamed Mesh (${intersection.object.uuid.slice(0, 5)})`;
+        onMeshSelect(meshName);
+
         onCoordChange(point.clone());
         if (!marker) {
           // Marker Size: 0.15
@@ -176,7 +190,7 @@ export default function ThreeScene({ onCoordChange, modelUrl, extractionParams, 
         currentMount.removeChild(renderer.domElement);
       }
     };
-  }, [modelUrl, onCoordChange]);
+  }, [modelUrl, onCoordChange, onMeshSelect]);
 
   useEffect(() => {
     if (!extractionParams || !modelRef.current) return;
