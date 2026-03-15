@@ -6,10 +6,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Zap, Loader2, Code, Copy, Filter, Globe, Search, ShieldCheck } from 'lucide-react';
+import { Database, Loader2, Copy, Filter, Globe, AlertCircle } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { discoverAllOrds } from '@/app/actions/niagara';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
 
 type Point = {
     ord: string;
@@ -33,6 +34,9 @@ type OrdMapperPanelProps = {
 
 export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps) {
     const [rawOrds, setRawOrds] = useState('');
+    const [niagaraUrl, setNiagaraUrl] = useState('https://192.168.1.225');
+    const [niagaraUser, setNiagaraUser] = useState('');
+    const [niagaraPass, setNiagaraPass] = useState('');
     const [startPath, setStartPath] = useState('config/Drivers');
     const [mapping, setMapping] = useState<PointMappingOutput | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -50,28 +54,88 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
         return 'Other';
     };
 
+    async function clientFetchNiagaraChildren(parentPath: string, url: string, user: string, pass: string) {
+        if (!url || !user || !pass) {
+            throw new Error("Niagara URL, Username, and Password are required for local connection.");
+        }
+
+        const auth = btoa(`${user}:${pass}`);
+        const fetchUrl = `${url}/api/v1/read?ord=${encodeURIComponent(parentPath)}`;
+
+        const response = await fetch(fetchUrl, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Basic ${auth}`,
+                'Accept': 'application/json',
+            },
+        });
+
+        if (!response.ok) {
+            if (response.status === 401) throw new Error("Authentication failed. Check credentials.");
+            if (response.status === 404) throw new Error(`ORD not found: ${parentPath}`);
+            throw new Error(`Station responded with ${response.status}: ${response.statusText}`);
+        }
+        return await response.json();
+    }
+
+    async function clientDiscoverAllOrds(startPath: string, url: string, user: string, pass: string): Promise<string[]> {
+        const foundOrds: Set<string> = new Set();
+        const visitedPaths: Set<string> = new Set();
+
+        async function crawl(path: string, depth: number = 0) {
+            if (depth > 20 || visitedPaths.has(path)) return;
+            visitedPaths.add(path);
+
+            try {
+                const data = await clientFetchNiagaraChildren(path, url, user, pass);
+                if (data && Array.isArray(data.children)) {
+                    for (const child of data.children) {
+                        const isContainer = child.type === 'Folder' || 
+                                          child.type === 'Device' || 
+                                          child.type === 'Container' ||
+                                          child.type.toLowerCase().includes('folder');
+                        const isPoint = child.type.toLowerCase().includes('point');
+
+                        if (isContainer) {
+                            await crawl(child.ord, depth + 1);
+                        } else if (isPoint) {
+                            foundOrds.add(child.ord);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn(`Skipping path ${path}:`, e);
+            }
+        }
+
+        await crawl(startPath);
+        return Array.from(foundOrds);
+    }
+
     const handleAutoDiscover = async () => {
         setIsFetching(true);
         try {
-            const discovered = await discoverAllOrds(startPath);
+            const discovered = await clientDiscoverAllOrds(startPath, niagaraUrl, niagaraUser, niagaraPass);
             if (discovered.length === 0) {
                 toast({
                     title: "No points found",
-                    description: "Station connected but found no points at this path.",
+                    description: "Connected but found no points. Check the start path and credentials.",
                     variant: "default"
                 });
             } else {
                 setRawOrds(discovered.join('\n'));
                 toast({
                     title: "Discovery Complete",
-                    description: `Successfully extracted ${discovered.length} ORDs from nested folders.`,
+                    description: `Successfully extracted ${discovered.length} ORDs.`,
                 });
             }
         } catch (error: any) {
+            console.error("Discovery Error:", error);
             toast({
                 title: "Connection Failed",
-                description: error.message || "Check your .env settings and station connectivity.",
-                variant: "destructive"
+                description: "This is likely a CORS issue. Your Niagara station must be configured to allow requests from this website. Check the browser console (F12) for details.",
+                variant: "destructive",
+                duration: 9000,
             });
         } finally {
             setIsFetching(false);
@@ -91,7 +155,6 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
 
         setIsLoading(true);
         
-        // Manual Parsing Logic
         setTimeout(() => {
             const roomsMap: Record<string, Point[]> = {};
 
@@ -100,7 +163,6 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 const pointName = parts[parts.length - 1] || 'Unknown';
                 let roomName = 'Global/Unassigned';
                 
-                // Identify room/equipment from the parent segment
                 if (parts.length > 1) {
                     roomName = parts[parts.length - 2];
                 }
@@ -157,11 +219,6 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             className="w-[450px]"
         >
             <div className="space-y-4">
-                <div className="flex items-center gap-2 p-2 bg-primary/5 rounded border border-primary/20 text-[10px] text-primary">
-                    <ShieldCheck className="h-3 w-3" />
-                    <span>Using secure Read-Only server proxy via .env configuration.</span>
-                </div>
-
                 <Tabs defaultValue="discovery" className="w-full">
                     <TabsList className="grid w-full grid-cols-2">
                         <TabsTrigger value="discovery">Discovery</TabsTrigger>
@@ -169,6 +226,46 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     </TabsList>
                     
                     <TabsContent value="discovery" className="space-y-3 pt-2">
+                        <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertTitle>Local Connection Method</AlertTitle>
+                            <AlertDescription className="text-xs">
+                                This requires your Niagara station to have CORS enabled for this website's domain. Credentials are handled locally in your browser.
+                            </AlertDescription>
+                        </Alert>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="niagara-url">Station URL (Local)</Label>
+                            <Input 
+                                id="niagara-url"
+                                value={niagaraUrl} 
+                                onChange={(e) => setNiagaraUrl(e.target.value)}
+                                placeholder="https://192.168.1.225"
+                                className="font-mono text-xs"
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="niagara-user">Username</Label>
+                                <Input 
+                                    id="niagara-user"
+                                    value={niagaraUser} 
+                                    onChange={(e) => setNiagaraUser(e.target.value)}
+                                    placeholder="API username"
+                                    className="font-mono text-xs"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="niagara-pass">Password</Label>
+                                <Input 
+                                    id="niagara-pass"
+                                    type="password"
+                                    value={niagaraPass} 
+                                    onChange={(e) => setNiagaraPass(e.target.value)}
+                                    placeholder="Password"
+                                    className="font-mono text-xs"
+                                />
+                            </div>
+                        </div>
                         <div className="space-y-1.5">
                             <Label htmlFor="start-path">Discovery Root Path</Label>
                             <div className="flex gap-2">
@@ -188,7 +285,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                                     {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
                                 </Button>
                             </div>
-                            <p className="text-[10px] text-muted-foreground italic">Recursive crawler opens all nested folders to find points.</p>
+                            <p className="text-[10px] text-muted-foreground italic">Connects directly from your browser. CORS must be enabled on station.</p>
                         </div>
                     </TabsContent>
 
