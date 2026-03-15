@@ -7,10 +7,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Loader2, Copy, Filter, Globe } from 'lucide-react';
+import { Database, Loader2, Copy, Filter, Globe, Zap, ShieldCheck } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { discoverOrdsServer } from '@/app/actions/niagara';
+import { Switch } from "@/components/ui/switch";
 
 type Point = {
     ord: string;
@@ -41,16 +42,20 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
     const [mapping, setMapping] = useState<PointMappingOutput | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isFetching, setIsFetching] = useState(false);
+    const [isDirectMode, setIsDirectMode] = useState(false);
     const { toast } = useToast();
 
     useEffect(() => {
         setStationUrl(localStorage.getItem('niagara-url') || '');
         setUsername(localStorage.getItem('niagara-user') || '');
+        const savedMode = localStorage.getItem('niagara-direct-mode');
+        if (savedMode) setIsDirectMode(savedMode === 'true');
     }, []);
 
     const saveCredentials = () => {
         localStorage.setItem('niagara-url', stationUrl);
         localStorage.setItem('niagara-user', username);
+        localStorage.setItem('niagara-direct-mode', isDirectMode.toString());
     };
 
     const handleAutoDiscover = async () => {
@@ -65,23 +70,53 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
         saveCredentials();
 
         try {
-            // Calling the Server Action instead of browser fetch
-            const ords = await discoverOrdsServer(startPath, {
-                url: stationUrl,
-                user: username,
-                pass: password
-            });
+            let ords: string[] = [];
+
+            if (isDirectMode) {
+                // Direct Browser Fetch (Requires Browser Settings: Allow Insecure Content + CORS Extension)
+                const auth = btoa(`${username}:${password}`);
+                const url = `${stationUrl}/api/v1/read?ord=${encodeURIComponent(startPath)}`;
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Basic ${auth}`,
+                        'Accept': 'application/json',
+                    },
+                });
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                
+                // Simple flat extraction for direct mode demonstration
+                if (data && Array.isArray(data.children)) {
+                    ords = data.children
+                        .filter((c: any) => (c.type || '').toLowerCase().includes('point'))
+                        .map((c: any) => c.ord);
+                }
+            } else {
+                // Server Proxy (Bypasses CORS, but cannot see local IPs from Netlify)
+                ords = await discoverOrdsServer(startPath, {
+                    url: stationUrl,
+                    user: username,
+                    pass: password
+                });
+            }
 
             if (ords.length === 0) {
-                toast({ title: "No Points Found", description: "Connected, but no points found at the path.", variant: "default" });
+                toast({ title: "No Points Found", description: "Connected, but no points found at the root path.", variant: "default" });
             } else {
                 setRawOrds(ords.join('\n'));
-                toast({ title: "Discovery Complete", description: `Extracted ${ords.length} ORDs via server proxy.` });
+                toast({ title: "Discovery Complete", description: `Extracted ${ords.length} ORDs.` });
             }
         } catch (error: any) {
+            const description = isDirectMode 
+                ? "Direct connection failed. Ensure 'Insecure content' is ALLOWED in Site Settings and CORS extension is ON."
+                : "Server could not reach station. Cloud servers cannot see local IPs without a tunnel.";
+            
             toast({ 
                 title: "Connection Failed", 
-                description: "The server could not reach the station. If using a local IP, ensure the server is running on the same network.", 
+                description,
                 variant: "destructive" 
             });
         } finally {
@@ -145,11 +180,34 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             id="ord-mapper-panel"
             title="ORD Mapper"
             icon={<Database className="h-5 w-5 text-primary" />}
-            description="Server-side proxy bypasses CORS security."
+            description="Bridge Niagara station data into your 3D view."
             initialPosition={initialPosition}
             className="w-[450px]"
         >
             <div className="space-y-4">
+                <div className="flex items-center justify-between p-2 bg-muted/50 rounded-lg border border-border/50">
+                    <div className="flex flex-col gap-0.5">
+                        <span className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1">
+                            {isDirectMode ? <Zap className="size-3 text-yellow-500" /> : <ShieldCheck className="size-3 text-blue-500" />}
+                            Connection Mode
+                        </span>
+                        <span className="text-xs font-medium">
+                            {isDirectMode ? "Direct (Local Network)" : "Server Proxy (Secure)"}
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Label htmlFor="mode-toggle" className="sr-only">Toggle Mode</Label>
+                        <Switch 
+                            id="mode-toggle" 
+                            checked={isDirectMode} 
+                            onCheckedChange={(checked) => {
+                                setIsDirectMode(checked);
+                                localStorage.setItem('niagara-direct-mode', checked.toString());
+                            }}
+                        />
+                    </div>
+                </div>
+
                 <Tabs defaultValue="discovery" className="w-full">
                     <TabsList className="grid w-full grid-cols-2">
                         <TabsTrigger value="discovery">Discovery</TabsTrigger>
@@ -180,6 +238,11 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                                 </Button>
                             </div>
                         </div>
+                        {isDirectMode && (
+                            <p className="text-[10px] text-muted-foreground italic bg-yellow-500/10 p-2 rounded">
+                                Note: Direct mode requires "Insecure content" ALLOWED in Browser Site Settings + CORS Extension ON.
+                            </p>
+                        )}
                     </TabsContent>
 
                     <TabsContent value="manual" className="pt-2">
