@@ -37,7 +37,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
     const [niagaraUrl, setNiagaraUrl] = useState('https://192.168.1.225');
     const [niagaraUser, setNiagaraUser] = useState('');
     const [niagaraPass, setNiagaraPass] = useState('');
-    const [startPath, setStartPath] = useState('config/Drivers');
+    const [startPath, setStartPath] = useState('Config/Drivers');
     const [mapping, setMapping] = useState<PointMappingOutput | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isFetching, setIsFetching] = useState(false);
