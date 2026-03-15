@@ -90,16 +90,23 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 const data = await clientFetchNiagaraChildren(path, url, user, pass);
                 if (data && Array.isArray(data.children)) {
                     for (const child of data.children) {
-                        const isContainer = child.type === 'Folder' || 
-                                          child.type === 'Device' || 
-                                          child.type === 'Container' ||
-                                          child.type.toLowerCase().includes('folder');
-                        const isPoint = child.type.toLowerCase().includes('point');
+                        const type = child.type.toLowerCase();
+                        const isPoint = type.includes('point');
 
-                        if (isContainer) {
-                            await crawl(child.ord, depth + 1);
-                        } else if (isPoint) {
+                        // Heuristic: Exclude known primitive-like types that are not containers.
+                        const isPrimitiveOrNonContainer = type.includes('string') || 
+                                                          type.includes('double') || 
+                                                          type.includes('float') || 
+                                                          type.includes('integer') || 
+                                                          type.includes('bool') ||
+                                                          type.includes('enum');
+                        
+                        if (isPoint) {
                             foundOrds.add(child.ord);
+                        } else if (!isPrimitiveOrNonContainer) {
+                            // Aggressively assume anything that is not a point or a primitive might be a container.
+                            // The try/catch wrapping the crawl call will handle errors for components that have no children.
+                            await crawl(child.ord, depth + 1);
                         }
                     }
                 }
