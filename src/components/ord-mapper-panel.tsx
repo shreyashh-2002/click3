@@ -1,18 +1,14 @@
-
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Loader2, Copy, Filter, Globe, Terminal } from 'lucide-react';
+import { Database, Loader2, Copy, Filter, Globe, WifiOff, AlertTriangle, KeyRound, ServerCrash } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { discoverAllOrds } from '@/app/actions/niagara';
-
 
 type Point = {
     ord: string;
@@ -36,64 +32,133 @@ type OrdMapperPanelProps = {
 
 export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps) {
     const [rawOrds, setRawOrds] = useState('');
-    const [startPath, setStartPath] = useState('Config');
+    const [stationUrl, setStationUrl] = useState('');
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [startPath, setStartPath] = useState('Config/Drivers');
     const [mapping, setMapping] = useState<PointMappingOutput | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isFetching, setIsFetching] = useState(false);
     const { toast } = useToast();
 
-    const categorizePoint = (name: string): Point['category'] => {
-        const n = name.toLowerCase();
-        if (n.includes('temp') || n.includes('temperature')) return 'Temperature';
-        if (n.includes('set') || n.includes('sp') || n.includes('stp')) return 'Setpoint';
-        if (n.includes('hum') || n.includes('humidity')) return 'Humidity';
-        if (n.includes('occ') || n.includes('occupancy')) return 'Occupancy';
-        if (n.includes('stat') || n.includes('alarm') || n.includes('fbk')) return 'Status';
-        if (n.includes('cmd') || n.includes('out') || n.includes('start')) return 'Command';
-        return 'Other';
+    useEffect(() => {
+        setStationUrl(localStorage.getItem('niagara-url') || '');
+        setUsername(localStorage.getItem('niagara-user') || '');
+    }, []);
+
+    const saveCredentials = () => {
+        localStorage.setItem('niagara-url', stationUrl);
+        localStorage.setItem('niagara-user', username);
     };
 
+    const fetchWithTimeout = async (resource: RequestInfo, options: RequestInit & { timeout?: number } = {}) => {
+        const { timeout = 8000 } = options;
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeout);
+        const response = await fetch(resource, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(id);
+        return response;
+    };
+
+    async function crawl(path: string, auth: string, foundOrds: Set<string>, visitedPaths: Set<string>, depth: number = 0) {
+        if (depth > 20 || visitedPaths.has(path)) return;
+        visitedPaths.add(path);
+
+        const url = `${stationUrl}/api/v1/read?ord=${encodeURIComponent(path)}`;
+
+        try {
+            const response = await fetchWithTimeout(url, {
+                method: 'GET',
+                headers: { 'Authorization': `Basic ${auth}`, 'Accept': 'application/json' },
+                timeout: 10000
+            });
+
+            if (response.status === 401) {
+                throw new Error("Authentication failed. Check username and password.");
+            }
+            if (!response.ok) {
+                // Don't throw for non-containers, just warn and skip.
+                console.warn(`Skipping path ${path} (status: ${response.status}). It might not be a container or is inaccessible.`);
+                return;
+            }
+
+            const data = await response.json();
+
+            if (data && Array.isArray(data.children)) {
+                for (const child of data.children) {
+                    const isPoint = (child.type || '').toLowerCase().includes('point');
+                    if (isPoint) {
+                        foundOrds.add(child.ord);
+                    } else {
+                        // Aggressively assume anything not a point could be a container
+                        await crawl(child.ord, auth, foundOrds, visitedPaths, depth + 1);
+                    }
+                }
+            }
+        } catch (error: any) {
+            if (error.name === 'AbortError') {
+                throw new Error(`Connection timed out. Could not reach the station at ${stationUrl}.`);
+            }
+            // For other errors, we check if we are at the root. If not, we can ignore them.
+            if (depth > 0) {
+                 console.warn(`Skipping crawl for ${path} due to error:`, error.message);
+            } else {
+                // If the root path itself fails, we must throw the error.
+                throw error;
+            }
+        }
+    }
+
     const handleAutoDiscover = async () => {
+        if (!stationUrl || !username || !password) {
+            toast({ title: "Missing Credentials", description: "Please enter Station URL, Username, and Password.", variant: "destructive" });
+            return;
+        }
+
         setIsFetching(true);
         setRawOrds('');
         setMapping(null);
+        saveCredentials();
+
+        const auth = Buffer.from(`${username}:${password}`).toString('base64');
+        const foundOrds = new Set<string>();
+        const visitedPaths = new Set<string>();
+
         try {
-            const discovered = await discoverAllOrds(startPath);
-            
-            if (discovered.length === 0) {
-                toast({
-                    title: "Discovery Succeeded",
-                    description: "Successfully connected, but found no points. Check the start path and ensure the user account has read permissions for that folder.",
-                    variant: "default"
-                });
+            await crawl(startPath, auth, foundOrds, visitedPaths);
+
+            if (foundOrds.size === 0) {
+                toast({ title: "Discovery Succeeded", description: "Successfully connected, but found no points. Check the start path and ensure the user has read permissions.", variant: "default" });
             } else {
-                setRawOrds(discovered.join('\n'));
-                toast({
-                    title: "Discovery Complete",
-                    description: `Successfully extracted ${discovered.length} ORDs.`,
-                });
+                setRawOrds(Array.from(foundOrds).join('\n'));
+                toast({ title: "Discovery Complete", description: `Successfully extracted ${foundOrds.size} ORDs.` });
             }
         } catch (error: any) {
+            let title = "Discovery Failed";
+            let description = error.message || "An unknown error occurred.";
+
+            if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+                title = "Connection Error";
+                description = "Could not connect to the station. This is likely a CORS issue, a network problem, or an incorrect URL. Please check the browser console for more details.";
+            } else if (error.message.includes("Authentication")) {
+                title = "Authentication Failed";
+                description = "Please check your username and password.";
+            }
+
+            toast({ title, description, variant: "destructive", duration: 9000 });
             console.error("Discovery Error:", error);
-            toast({
-                title: "Discovery Failed",
-                description: error.message || "An unknown error occurred during discovery.",
-                variant: "destructive",
-                duration: 9000,
-            });
         } finally {
             setIsFetching(false);
         }
     };
-
+    
     const handleProcess = () => {
         const ordArray = rawOrds.split('\n').map(s => s.trim()).filter(Boolean);
         if (ordArray.length === 0) {
-            toast({
-                title: "No ORDs provided",
-                description: "Paste ORDs or use the Discovery tool to fetch them.",
-                variant: "destructive"
-            });
+            toast({ title: "No ORDs provided", description: "Paste ORDs or use the Discovery tool.", variant: "destructive" });
             return;
         }
 
@@ -111,46 +176,35 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     roomName = parts[parts.length - 2];
                 }
 
-                const category = categorizePoint(pointName);
-                const label = pointName
-                    .replace(/_/g, ' ')
-                    .replace(/([A-Z])/g, ' $1')
-                    .trim();
+                const categorizePoint = (name: string): Point['category'] => {
+                    const n = name.toLowerCase();
+                    if (n.includes('temp')) return 'Temperature';
+                    if (n.includes('set') || n.includes('sp')) return 'Setpoint';
+                    if (n.includes('hum')) return 'Humidity';
+                    if (n.includes('occ')) return 'Occupancy';
+                    if (n.includes('stat')) return 'Status';
+                    if (n.includes('cmd')) return 'Command';
+                    return 'Other';
+                };
 
-                const point: Point = { ord, category, label };
+                const label = pointName.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim();
+                const point: Point = { ord, category: categorizePoint(pointName), label };
 
                 if (!roomsMap[roomName]) roomsMap[roomName] = [];
                 roomsMap[roomName].push(point);
             });
 
-            const rooms: RoomMapping[] = Object.entries(roomsMap).map(([roomName, points]) => ({
-                roomName,
-                points
-            }));
-
-            const scriptPreview = `/**\n * Auto-generated Niagara Script\n * Room: {{RoomName}}\n */\n\public void onExecute() {\n${
-                rooms.map(r => 
-                    `  // Points for ${r.roomName}\n` + 
-                    r.points.map(p => `  BStatusNumeric ${p.label.replace(/\s+/g, '')} = (BStatusNumeric) get("${p.ord}");`).join('\n')
-                ).join('\n\n')
-            }\n}`;
-
+            const rooms: RoomMapping[] = Object.entries(roomsMap).map(([roomName, points]) => ({ roomName, points }));
+            const scriptPreview = `/**\n * Auto-generated Niagara Script Preview\n */\n${rooms.map(r => `// Room: ${r.roomName}\n` + r.points.map(p => `BStatusNumeric ${p.label.replace(/\s+/g, '')} = (BStatusNumeric) BOrd.make("station:|slot:/.../${p.label}").get();`).join('\n')).join('\n\n')}`;
             setMapping({ rooms, generatedScriptPreview: scriptPreview });
             setIsLoading(false);
-            
-            toast({
-                title: "Mapping Successful",
-                description: `Grouped points into ${rooms.length} zones.`,
-            });
+            toast({ title: "Mapping Successful", description: `Grouped points into ${rooms.length} zones.` });
         }, 300);
     };
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
-        toast({
-            title: "Copied!",
-            description: "Content copied to clipboard.",
-        });
+        toast({ title: "Copied!", description: "Content copied to clipboard." });
     };
 
     return (
@@ -158,7 +212,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             id="ord-mapper-panel"
             title="ORD Mapper"
             icon={<Database className="h-5 w-5 text-primary" />}
-            description="Deep discovery and automatic point mapping tool."
+            description="Client-side discovery and automatic point mapping."
             initialPosition={initialPosition}
             className="w-[450px]"
         >
@@ -170,33 +224,28 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     </TabsList>
                     
                     <TabsContent value="discovery" className="space-y-3 pt-2">
-                        <Alert variant="default" className="border-primary/20 bg-primary/10 text-primary-foreground">
-                            <Terminal className="h-4 w-4 text-primary" />
-                            <AlertTitle>Server-Side Connection</AlertTitle>
-                            <AlertDescription className="text-xs">
-                                This tool now uses a secure server-side connection. Please ensure your Niagara credentials are set in the <code>.env</code> file and restart your local dev server.
-                            </AlertDescription>
-                        </Alert>
+                         <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="niagara-user">Username</Label>
+                                <Input id="niagara-user" value={username} onChange={(e) => setUsername(e.target.value)} onBlur={saveCredentials} />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="niagara-pass">Password</Label>
+                                <Input id="niagara-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                            </div>
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="niagara-url">Station URL</Label>
+                            <Input id="niagara-url" value={stationUrl} onChange={(e) => setStationUrl(e.target.value)} placeholder="https://192.168.1.225" onBlur={saveCredentials} />
+                        </div>
                         <div className="space-y-1.5">
                             <Label htmlFor="start-path">Discovery Root Path</Label>
                             <div className="flex gap-2">
-                                <Input 
-                                    id="start-path"
-                                    value={startPath} 
-                                    onChange={(e) => setStartPath(e.target.value)}
-                                    placeholder="e.g. Config"
-                                    className="font-mono text-xs"
-                                />
-                                <Button 
-                                    variant="secondary" 
-                                    onClick={handleAutoDiscover} 
-                                    disabled={isFetching}
-                                    title="Start recursive extraction"
-                                >
+                                <Input id="start-path" value={startPath} onChange={(e) => setStartPath(e.target.value)} className="font-mono text-xs" />
+                                <Button variant="secondary" onClick={handleAutoDiscover} disabled={isFetching}>
                                     {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
                                 </Button>
                             </div>
-                            <p className="text-[10px] text-muted-foreground italic">Connects from the local server. No CORS required.</p>
                         </div>
                     </TabsContent>
 
@@ -216,42 +265,32 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 </Button>
 
                 {mapping && (
-                    <Tabs defaultValue="mapped" className="w-full mt-4">
+                     <Tabs defaultValue="mapped" className="w-full mt-4">
                         <TabsList className="grid w-full grid-cols-2">
                             <TabsTrigger value="mapped">Mapped Zones</TabsTrigger>
                             <TabsTrigger value="script">Script</TabsTrigger>
                         </TabsList>
-                        
-                        <TabsContent value="mapped" className="mt-4 space-y-4 max-h-80 overflow-auto pr-2 scrollbar-thin scrollbar-thumb-primary">
+                        <TabsContent value="mapped" className="mt-4 space-y-4 max-h-80 overflow-auto pr-2">
                             {mapping.rooms.map((room, idx) => (
-                                <div key={idx} className="border rounded-md p-3 bg-muted/30 border-primary/20">
-                                    <h4 className="font-bold text-sm text-primary mb-2 flex items-center justify-between">
-                                        {room.roomName}
-                                        <span className="text-[10px] font-normal text-muted-foreground bg-secondary px-1.5 rounded">{room.points.length} pts</span>
-                                    </h4>
-                                    <ul className="space-y-1.5">
+                                <div key={idx} className="border rounded-md p-3 bg-muted/30">
+                                    <h4 className="font-bold text-sm text-primary mb-2 flex justify-between">{room.roomName} <span className="text-xs font-normal text-muted-foreground">{room.points.length} pts</span></h4>
+                                    <ul className="space-y-1">
                                         {room.points.map((p, pIdx) => (
-                                            <li key={pIdx} className="text-xs flex flex-col gap-0.5 border-b border-border/50 pb-1.5 last:border-0 last:pb-0">
-                                                <div className="flex justify-between items-center">
-                                                    <span className="font-medium text-foreground">{p.label}</span>
-                                                    <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
-                                                        {p.category}
-                                                    </span>
-                                                </div>
-                                                <span className="text-[10px] text-muted-foreground truncate font-mono" title={p.ord}>{p.ord}</span>
+                                            <li key={pIdx} className="text-xs flex justify-between items-center border-b border-border/50 pb-1 last:border-0 last:pb-0">
+                                                <span className="font-medium">{p.label}</span>
+                                                <span className="text-[9px] uppercase px-1 rounded bg-primary/10 text-primary">{p.category}</span>
                                             </li>
                                         ))}
                                     </ul>
                                 </div>
                             ))}
                         </TabsContent>
-
                         <TabsContent value="script" className="mt-4">
                             <div className="relative group">
                                 <Button size="icon" variant="secondary" className="absolute right-2 top-2 h-8 w-8 z-10" onClick={() => copyToClipboard(mapping.generatedScriptPreview)}>
                                     <Copy className="h-4 w-4" />
                                 </Button>
-                                <pre className="bg-muted p-4 rounded-md text-[11px] font-mono whitespace-pre-wrap overflow-x-auto border border-border/50 max-h-80">
+                                <pre className="bg-muted p-4 rounded-md text-xs font-mono whitespace-pre-wrap overflow-x-auto max-h-80">
                                     <code>{mapping.generatedScriptPreview}</code>
                                 </pre>
                             </div>
