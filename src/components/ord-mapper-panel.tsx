@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -7,11 +6,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Loader2, Copy, Filter, Globe, Zap, ShieldCheck } from 'lucide-react';
+import { Database, Loader2, Copy, Filter, Globe, Zap, ShieldCheck, AlertCircle } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { discoverOrdsServer } from '@/app/actions/niagara';
 import { Switch } from "@/components/ui/switch";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type Point = {
     ord: string;
@@ -43,6 +43,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
     const [isLoading, setIsLoading] = useState(false);
     const [isFetching, setIsFetching] = useState(false);
     const [isDirectMode, setIsDirectMode] = useState(false);
+    const [fetchError, setFetchError] = useState<string | null>(null);
     const { toast } = useToast();
 
     useEffect(() => {
@@ -65,6 +66,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
         }
 
         setIsFetching(true);
+        setFetchError(null);
         setRawOrds('');
         setMapping(null);
         saveCredentials();
@@ -75,7 +77,8 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             if (isDirectMode) {
                 // Direct Browser Fetch (Requires Browser Settings: Allow Insecure Content + CORS Extension)
                 const auth = btoa(`${username}:${password}`);
-                const url = `${stationUrl}/api/v1/read?ord=${encodeURIComponent(startPath)}`;
+                const baseUrl = stationUrl.endsWith('/') ? stationUrl.slice(0, -1) : stationUrl;
+                const url = `${baseUrl}/api/v1/read?ord=${encodeURIComponent(startPath)}`;
                 
                 const response = await fetch(url, {
                     method: 'GET',
@@ -85,17 +88,16 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     },
                 });
 
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                if (!response.ok) throw new Error(`Browser direct fetch failed: HTTP ${response.status}`);
                 const data = await response.json();
                 
-                // Simple flat extraction for direct mode demonstration
                 if (data && Array.isArray(data.children)) {
                     ords = data.children
                         .filter((c: any) => (c.type || '').toLowerCase().includes('point'))
                         .map((c: any) => c.ord);
                 }
             } else {
-                // Server Proxy (Bypasses CORS, but cannot see local IPs from Netlify)
+                // Server Proxy (Bypasses CORS)
                 ords = await discoverOrdsServer(startPath, {
                     url: stationUrl,
                     user: username,
@@ -110,13 +112,12 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 toast({ title: "Discovery Complete", description: `Extracted ${ords.length} ORDs.` });
             }
         } catch (error: any) {
-            const description = isDirectMode 
-                ? "Direct connection failed. Ensure 'Insecure content' is ALLOWED in Site Settings and CORS extension is ON."
-                : "Server could not reach station. Cloud servers cannot see local IPs without a tunnel.";
+            console.error("Discovery Error:", error);
+            setFetchError(error.message || "An unexpected error occurred during discovery.");
             
             toast({ 
-                title: "Connection Failed", 
-                description,
+                title: "Discovery Failed", 
+                description: error.message || "Check credentials and station connectivity.",
                 variant: "destructive" 
             });
         } finally {
@@ -192,7 +193,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                             Connection Mode
                         </span>
                         <span className="text-xs font-medium">
-                            {isDirectMode ? "Direct (Local Network)" : "Server Proxy (Secure)"}
+                            {isDirectMode ? "Direct (Browser)" : "Server Proxy (Local Node)"}
                         </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -203,10 +204,21 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                             onCheckedChange={(checked) => {
                                 setIsDirectMode(checked);
                                 localStorage.setItem('niagara-direct-mode', checked.toString());
+                                setFetchError(null);
                             }}
                         />
                     </div>
                 </div>
+
+                {fetchError && (
+                    <Alert variant="destructive" className="py-2 px-3 animate-in fade-in slide-in-from-top-1">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertTitle className="text-xs">Connection Error</AlertTitle>
+                        <AlertDescription className="text-[10px] leading-tight">
+                            {fetchError}
+                        </AlertDescription>
+                    </Alert>
+                )}
 
                 <Tabs defaultValue="discovery" className="w-full">
                     <TabsList className="grid w-full grid-cols-2">
@@ -238,11 +250,6 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                                 </Button>
                             </div>
                         </div>
-                        {isDirectMode && (
-                            <p className="text-[10px] text-muted-foreground italic bg-yellow-500/10 p-2 rounded">
-                                Note: Direct mode requires "Insecure content" ALLOWED in Browser Site Settings + CORS Extension ON.
-                            </p>
-                        )}
                     </TabsContent>
 
                     <TabsContent value="manual" className="pt-2">
@@ -269,12 +276,15 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                         <TabsContent value="mapped" className="mt-4 space-y-4 max-h-80 overflow-auto pr-2">
                             {mapping.rooms.map((room, idx) => (
                                 <div key={idx} className="border rounded-md p-3 bg-muted/30">
-                                    <h4 className="font-bold text-sm text-primary mb-2 flex justify-between">{room.roomName} <span className="text-xs font-normal text-muted-foreground">{room.points.length} pts</span></h4>
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h4 className="font-bold text-sm text-primary">{room.roomName}</h4>
+                                        <span className="text-[9px] font-normal text-muted-foreground bg-background px-1.5 py-0.5 rounded-full border border-border/50">{room.points.length} pts</span>
+                                    </div>
                                     <ul className="space-y-1">
                                         {room.points.map((p, pIdx) => (
-                                            <li key={pIdx} className="text-xs flex justify-between items-center border-b border-border/50 pb-1 last:border-0 last:pb-0">
-                                                <span className="font-medium">{p.label}</span>
-                                                <span className="text-[9px] uppercase px-1 rounded bg-primary/10 text-primary">{p.category}</span>
+                                            <li key={pIdx} className="text-[11px] flex justify-between items-center border-b border-border/50 pb-1 last:border-0 last:pb-0">
+                                                <span className="font-medium truncate mr-2" title={p.ord}>{p.label}</span>
+                                                <span className="text-[8px] uppercase px-1 rounded bg-primary/10 text-primary shrink-0">{p.category}</span>
                                             </li>
                                         ))}
                                     </ul>
@@ -286,7 +296,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                                 <Button size="icon" variant="secondary" className="absolute right-2 top-2 h-8 w-8 z-10" onClick={() => copyToClipboard(mapping.generatedScriptPreview)}>
                                     <Copy className="h-4 w-4" />
                                 </Button>
-                                <pre className="bg-muted p-4 rounded-md text-xs font-mono whitespace-pre-wrap overflow-x-auto max-h-80">
+                                <pre className="bg-muted p-4 rounded-md text-[10px] font-mono whitespace-pre-wrap overflow-x-auto max-h-80">
                                     <code>{mapping.generatedScriptPreview}</code>
                                 </pre>
                             </div>
