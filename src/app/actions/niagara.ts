@@ -27,7 +27,7 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials) {
   const url = `${baseUrl}/api/v1/read?ord=${encodeURIComponent(path)}`;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout per request
+  const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
 
   try {
     const response = await fetch(url, {
@@ -43,27 +43,17 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials) {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      if (response.status === 401) throw new Error("Niagara Authentication failed. Check username/password.");
+      if (response.status === 401) throw new Error("Niagara Authentication failed.");
       if (response.status === 404) throw new Error(`ORD not found: ${path}`);
-      if (response.status === 503) throw new Error("Station Busy (503). The station is rejecting requests. Wait a moment and try again.");
-      throw new Error(`Station error: ${response.status} ${response.statusText}`);
-    }
-
-    const contentType = response.headers.get("content-type");
-    if (!contentType || !contentType.includes("application/json")) {
-      const text = await response.text();
-      console.error("Non-JSON response received:", text.slice(0, 200));
-      throw new Error("Station returned invalid data format (expected JSON). Ensure the REST API is enabled.");
+      if (response.status === 503) throw new Error("503"); // Special code for busy station
+      throw new Error(`Station error: ${response.status}`);
     }
 
     return await response.json();
   } catch (error: any) {
     clearTimeout(timeoutId);
-    if (error.name === 'AbortError') {
-      throw new Error(`Request timed out for path: ${path}`);
-    }
-    console.error(`Server Proxy Error [${path}]:`, error.message);
-    throw new Error(error.message || "Could not connect to station.");
+    if (error.name === 'AbortError') throw new Error("Request timed out.");
+    throw error;
   }
 }
 
@@ -74,15 +64,15 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
   const foundOrds: Set<string> = new Set();
   const visitedPaths: Set<string> = new Set();
   let requestCount = 0;
-  const MAX_REQUESTS = 100; // Safety limit to prevent long hangs
+  const MAX_REQUESTS = 60; // Lowered for safety
 
   async function crawl(path: string, depth: number = 0) {
-    if (depth > 8 || visitedPaths.has(path) || requestCount >= MAX_REQUESTS) return;
+    if (depth > 5 || visitedPaths.has(path) || requestCount >= MAX_REQUESTS) return;
     visitedPaths.add(path);
     requestCount++;
 
-    // Politeness Delay: Wait 200ms before each request to avoid 503 errors
-    await sleep(200);
+    // Politeness Delay: Wait 500ms between requests to avoid 503 errors
+    await sleep(500);
 
     try {
       const data = await proxyFetchOrd(path, creds);
@@ -95,19 +85,18 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
           
           if (isPoint) {
             foundOrds.add(child.ord);
-          } else if (isFolder && depth < 8) {
-            // Recursive discovery with a limit
+          } else if (isFolder && depth < 5 && foundOrds.size < 100) {
             await crawl(child.ord, depth + 1);
           }
         }
       }
     } catch (e: any) {
-      if (depth === 0) throw e; // Fail fast if the root path fails
-      console.warn(`Skipping child path ${path}: ${e.message}`);
-      // If we hit a 503, stop crawling to let the station recover
-      if (e.message.includes('503')) {
-        throw e;
+      if (e.message === '503') {
+        // Stop crawling immediately but don't crash, return what we found
+        console.warn("Station reported 503. Stopping crawl early.");
+        return; 
       }
+      if (depth === 0) throw e;
     }
   }
 

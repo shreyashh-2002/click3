@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Loader2, Copy, Filter, Globe, Zap, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Database, Loader2, Copy, Filter, Globe, Zap, ShieldCheck, AlertCircle, Info } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { discoverOrdsServer } from '@/app/actions/niagara';
@@ -75,7 +75,6 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             let ords: string[] = [];
 
             if (isDirectMode) {
-                // Direct Browser Fetch (Requires Browser Settings: Allow Insecure Content + CORS Extension)
                 const auth = btoa(`${username}:${password}`);
                 const baseUrl = stationUrl.endsWith('/') ? stationUrl.slice(0, -1) : stationUrl;
                 const url = `${baseUrl}/api/v1/read?ord=${encodeURIComponent(startPath)}`;
@@ -97,7 +96,6 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                         .map((c: any) => c.ord);
                 }
             } else {
-                // Server Proxy (Bypasses CORS)
                 ords = await discoverOrdsServer(startPath, {
                     url: stationUrl,
                     user: username,
@@ -106,18 +104,19 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             }
 
             if (ords.length === 0) {
-                toast({ title: "No Points Found", description: "Connected, but no points found at the root path.", variant: "default" });
+                toast({ title: "No Points Found", description: "Discovery finished, but no points were found at this path.", variant: "default" });
             } else {
                 setRawOrds(ords.join('\n'));
-                toast({ title: "Discovery Complete", description: `Extracted ${ords.length} ORDs.` });
+                toast({ title: "Discovery Complete", description: `Found ${ords.length} ORDs.` });
             }
         } catch (error: any) {
             console.error("Discovery Error:", error);
-            setFetchError(error.message || "An unexpected error occurred during discovery.");
+            const msg = error.message === '503' ? "Station is busy. Try a deeper starting path to reduce load." : error.message;
+            setFetchError(msg || "Connection failed.");
             
             toast({ 
-                title: "Discovery Failed", 
-                description: error.message || "Check credentials and station connectivity.",
+                title: "Discovery Error", 
+                description: msg || "Check connectivity.",
                 variant: "destructive" 
             });
         } finally {
@@ -213,9 +212,18 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 {fetchError && (
                     <Alert variant="destructive" className="py-2 px-3 animate-in fade-in slide-in-from-top-1">
                         <AlertCircle className="h-4 w-4" />
-                        <AlertTitle className="text-xs">Connection Error</AlertTitle>
+                        <AlertTitle className="text-xs">Connection Warning</AlertTitle>
                         <AlertDescription className="text-[10px] leading-tight">
                             {fetchError}
+                        </AlertDescription>
+                    </Alert>
+                )}
+
+                {!isDirectMode && (
+                    <Alert className="py-2 px-3 bg-primary/5 border-primary/20">
+                        <Info className="h-4 w-4 text-primary" />
+                        <AlertDescription className="text-[10px] text-muted-foreground">
+                            Using 500ms request delays to protect the station. Discovery will be slower but safer.
                         </AlertDescription>
                     </Alert>
                 )}
