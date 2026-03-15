@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -37,7 +38,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
     const [niagaraUrl, setNiagaraUrl] = useState('https://192.168.1.225');
     const [niagaraUser, setNiagaraUser] = useState('');
     const [niagaraPass, setNiagaraPass] = useState('');
-    const [startPath, setStartPath] = useState('Config/Drivers');
+    const [startPath, setStartPath] = useState('Config');
     const [mapping, setMapping] = useState<PointMappingOutput | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isFetching, setIsFetching] = useState(false);
@@ -90,22 +91,14 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 const data = await clientFetchNiagaraChildren(path, url, user, pass);
                 if (data && Array.isArray(data.children)) {
                     for (const child of data.children) {
-                        const type = child.type.toLowerCase();
+                        const type = (child.type || '').toLowerCase();
                         const isPoint = type.includes('point');
-
-                        // Heuristic: Exclude known primitive-like types that are not containers.
-                        const isPrimitiveOrNonContainer = type.includes('string') || 
-                                                          type.includes('double') || 
-                                                          type.includes('float') || 
-                                                          type.includes('integer') || 
-                                                          type.includes('bool') ||
-                                                          type.includes('enum');
                         
                         if (isPoint) {
                             foundOrds.add(child.ord);
-                        } else if (!isPrimitiveOrNonContainer) {
-                            // Aggressively assume anything that is not a point or a primitive might be a container.
-                            // The try/catch wrapping the crawl call will handle errors for components that have no children.
+                        } else {
+                            // Aggressively crawl any component that is not a point.
+                            // The try/catch will gracefully handle errors for leaf nodes that don't have children.
                             await crawl(child.ord, depth + 1);
                         }
                     }
@@ -120,13 +113,22 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
     }
 
     const handleAutoDiscover = async () => {
+        if (!niagaraUrl || !niagaraUser || !niagaraPass) {
+            toast({
+                title: "Missing Credentials",
+                description: "Please provide the Station URL, Username, and Password.",
+                variant: "destructive",
+            });
+            return;
+        }
+
         setIsFetching(true);
         try {
             const discovered = await clientDiscoverAllOrds(startPath, niagaraUrl, niagaraUser, niagaraPass);
             if (discovered.length === 0) {
                 toast({
                     title: "No points found",
-                    description: "Connected but found no points. Check the start path and credentials.",
+                    description: "Connected but found no points. Check the start path and ensure the user has read permissions.",
                     variant: "default"
                 });
             } else {
