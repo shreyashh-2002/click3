@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -6,9 +7,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Loader2, Copy, Filter, Globe, WifiOff, AlertTriangle, KeyRound, ServerCrash } from 'lucide-react';
+import { Database, Loader2, Copy, Filter, Globe } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { discoverOrdsServer } from '@/app/actions/niagara';
 
 type Point = {
     ord: string;
@@ -51,67 +53,6 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
         localStorage.setItem('niagara-user', username);
     };
 
-    const fetchWithTimeout = async (resource: RequestInfo, options: RequestInit & { timeout?: number } = {}) => {
-        const { timeout = 8000 } = options;
-        const controller = new AbortController();
-        const id = setTimeout(() => controller.abort(), timeout);
-        const response = await fetch(resource, {
-            ...options,
-            signal: controller.signal
-        });
-        clearTimeout(id);
-        return response;
-    };
-
-    async function crawl(path: string, auth: string, foundOrds: Set<string>, visitedPaths: Set<string>, depth: number = 0) {
-        if (depth > 20 || visitedPaths.has(path)) return;
-        visitedPaths.add(path);
-
-        const url = `${stationUrl}/api/v1/read?ord=${encodeURIComponent(path)}`;
-
-        try {
-            const response = await fetchWithTimeout(url, {
-                method: 'GET',
-                headers: { 'Authorization': `Basic ${auth}`, 'Accept': 'application/json' },
-                timeout: 10000
-            });
-
-            if (response.status === 401) {
-                throw new Error("Authentication failed. Check username and password.");
-            }
-            if (!response.ok) {
-                // Don't throw for non-containers, just warn and skip.
-                console.warn(`Skipping path ${path} (status: ${response.status}). It might not be a container or is inaccessible.`);
-                return;
-            }
-
-            const data = await response.json();
-
-            if (data && Array.isArray(data.children)) {
-                for (const child of data.children) {
-                    const isPoint = (child.type || '').toLowerCase().includes('point');
-                    if (isPoint) {
-                        foundOrds.add(child.ord);
-                    } else {
-                        // Aggressively assume anything not a point could be a container
-                        await crawl(child.ord, auth, foundOrds, visitedPaths, depth + 1);
-                    }
-                }
-            }
-        } catch (error: any) {
-            if (error.name === 'AbortError') {
-                throw new Error(`Connection timed out. Could not reach the station at ${stationUrl}.`);
-            }
-            // For other errors, we check if we are at the root. If not, we can ignore them.
-            if (depth > 0) {
-                 console.warn(`Skipping crawl for ${path} due to error:`, error.message);
-            } else {
-                // If the root path itself fails, we must throw the error.
-                throw error;
-            }
-        }
-    }
-
     const handleAutoDiscover = async () => {
         if (!stationUrl || !username || !password) {
             toast({ title: "Missing Credentials", description: "Please enter Station URL, Username, and Password.", variant: "destructive" });
@@ -123,33 +64,26 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
         setMapping(null);
         saveCredentials();
 
-        const auth = Buffer.from(`${username}:${password}`).toString('base64');
-        const foundOrds = new Set<string>();
-        const visitedPaths = new Set<string>();
-
         try {
-            await crawl(startPath, auth, foundOrds, visitedPaths);
+            // Calling the Server Action instead of browser fetch
+            const ords = await discoverOrdsServer(startPath, {
+                url: stationUrl,
+                user: username,
+                pass: password
+            });
 
-            if (foundOrds.size === 0) {
-                toast({ title: "Discovery Succeeded", description: "Successfully connected, but found no points. Check the start path and ensure the user has read permissions.", variant: "default" });
+            if (ords.length === 0) {
+                toast({ title: "No Points Found", description: "Connected, but no points found at the path.", variant: "default" });
             } else {
-                setRawOrds(Array.from(foundOrds).join('\n'));
-                toast({ title: "Discovery Complete", description: `Successfully extracted ${foundOrds.size} ORDs.` });
+                setRawOrds(ords.join('\n'));
+                toast({ title: "Discovery Complete", description: `Extracted ${ords.length} ORDs via server proxy.` });
             }
         } catch (error: any) {
-            let title = "Discovery Failed";
-            let description = error.message || "An unknown error occurred.";
-
-            if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-                title = "Connection Error";
-                description = "Could not connect to the station. This is likely a CORS issue, a network problem, or an incorrect URL. Please check the browser console for more details.";
-            } else if (error.message.includes("Authentication")) {
-                title = "Authentication Failed";
-                description = "Please check your username and password.";
-            }
-
-            toast({ title, description, variant: "destructive", duration: 9000 });
-            console.error("Discovery Error:", error);
+            toast({ 
+                title: "Connection Failed", 
+                description: "The server could not reach the station. If using a local IP, ensure the server is running on the same network.", 
+                variant: "destructive" 
+            });
         } finally {
             setIsFetching(false);
         }
@@ -195,10 +129,9 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             });
 
             const rooms: RoomMapping[] = Object.entries(roomsMap).map(([roomName, points]) => ({ roomName, points }));
-            const scriptPreview = `/**\n * Auto-generated Niagara Script Preview\n */\n${rooms.map(r => `// Room: ${r.roomName}\n` + r.points.map(p => `BStatusNumeric ${p.label.replace(/\s+/g, '')} = (BStatusNumeric) BOrd.make("station:|slot:/.../${p.label}").get();`).join('\n')).join('\n\n')}`;
+            const scriptPreview = `/**\n * Auto-generated Niagara Script\n */\n${rooms.map(r => `// ${r.roomName}\n` + r.points.map(p => `BStatusNumeric ${p.label.replace(/\s+/g, '')} = (BStatusNumeric) BOrd.make("${p.ord}").get();`).join('\n')).join('\n\n')}`;
             setMapping({ rooms, generatedScriptPreview: scriptPreview });
             setIsLoading(false);
-            toast({ title: "Mapping Successful", description: `Grouped points into ${rooms.length} zones.` });
         }, 300);
     };
 
@@ -212,7 +145,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             id="ord-mapper-panel"
             title="ORD Mapper"
             icon={<Database className="h-5 w-5 text-primary" />}
-            description="Client-side discovery and automatic point mapping."
+            description="Server-side proxy bypasses CORS security."
             initialPosition={initialPosition}
             className="w-[450px]"
         >
@@ -236,7 +169,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                         </div>
                         <div className="space-y-1.5">
                             <Label htmlFor="niagara-url">Station URL</Label>
-                            <Input id="niagara-url" value={stationUrl} onChange={(e) => setStationUrl(e.target.value)} placeholder="https://192.168.1.225" onBlur={saveCredentials} />
+                            <Input id="niagara-url" value={stationUrl} onChange={(e) => setStationUrl(e.target.value)} placeholder="http://192.168.1.225" onBlur={saveCredentials} />
                         </div>
                         <div className="space-y-1.5">
                             <Label htmlFor="start-path">Discovery Root Path</Label>
