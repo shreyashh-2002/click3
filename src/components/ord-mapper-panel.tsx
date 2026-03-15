@@ -91,20 +91,23 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 const data = await clientFetchNiagaraChildren(path, url, user, pass);
                 if (data && Array.isArray(data.children)) {
                     for (const child of data.children) {
-                        const type = (child.type || '').toLowerCase();
-                        const isPoint = type.includes('point');
+                        const isPoint = (child.type || '').toLowerCase().includes('point');
                         
                         if (isPoint) {
                             foundOrds.add(child.ord);
                         } else {
-                            // Aggressively crawl any component that is not a point.
-                            // The try/catch will gracefully handle errors for leaf nodes that don't have children.
-                            await crawl(child.ord, depth + 1);
+                           await crawl(child.ord, depth + 1);
                         }
                     }
                 }
             } catch (e) {
-                console.warn(`Skipping path ${path}:`, e);
+                // If the very first call (depth 0) fails, we MUST throw the error so the UI can report it.
+                // Otherwise, it's just a branch we can't explore, so we warn and continue.
+                if (depth === 0) {
+                    throw e; // Re-throw the error to be caught by handleAutoDiscover
+                } else {
+                    console.warn(`Skipping path ${path}:`, e);
+                }
             }
         }
 
@@ -127,8 +130,8 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             const discovered = await clientDiscoverAllOrds(startPath, niagaraUrl, niagaraUser, niagaraPass);
             if (discovered.length === 0) {
                 toast({
-                    title: "No points found",
-                    description: "Connected but found no points. Check the start path and ensure the user has read permissions.",
+                    title: "Connection Succeeded",
+                    description: "Successfully connected, but found no points. Check the start path and ensure the user has read permissions for that folder.",
                     variant: "default"
                 });
             } else {
@@ -140,9 +143,24 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             }
         } catch (error: any) {
             console.error("Discovery Error:", error);
+            
+            let title = "Connection Failed";
+            let description = "Could not connect to the station. Check the URL and ensure you are on the same network.";
+
+            // This error often indicates a network problem (bad URL) or a CORS issue.
+            if (error instanceof TypeError) {
+                 description = "This is likely a CORS issue or network problem. Your Niagara station must be configured to allow requests from this website. Check the browser console (F12) for details."
+            } else if (error.message.includes("Authentication failed")) {
+                title = "Authentication Failed";
+                description = "Connection was established, but the username or password was incorrect."
+            } else if (error.message.includes("ORD not found")) {
+                title = "Start Path Not Found";
+                description = `Connected successfully, but the start path "${startPath}" was not found.`
+            }
+
             toast({
-                title: "Connection Failed",
-                description: "This is likely a CORS issue. Your Niagara station must be configured to allow requests from this website. Check the browser console (F12) for details.",
+                title: title,
+                description: description,
                 variant: "destructive",
                 duration: 9000,
             });
