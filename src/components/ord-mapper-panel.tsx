@@ -7,10 +7,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Loader2, Copy, Filter, Globe, AlertCircle } from 'lucide-react';
+import { Database, Loader2, Copy, Filter, Globe, Terminal } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { discoverAllOrds } from '@/app/actions/niagara';
 
 
 type Point = {
@@ -35,9 +36,6 @@ type OrdMapperPanelProps = {
 
 export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps) {
     const [rawOrds, setRawOrds] = useState('');
-    const [niagaraUrl, setNiagaraUrl] = useState('https://192.168.1.225');
-    const [niagaraUser, setNiagaraUser] = useState('');
-    const [niagaraPass, setNiagaraPass] = useState('');
     const [startPath, setStartPath] = useState('Config');
     const [mapping, setMapping] = useState<PointMappingOutput | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -55,83 +53,17 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
         return 'Other';
     };
 
-    async function clientFetchNiagaraChildren(parentPath: string, url: string, user: string, pass: string) {
-        if (!url || !user || !pass) {
-            throw new Error("Niagara URL, Username, and Password are required for local connection.");
-        }
-
-        const auth = btoa(`${user}:${pass}`);
-        const fetchUrl = `${url}/api/v1/read?ord=${encodeURIComponent(parentPath)}`;
-
-        const response = await fetch(fetchUrl, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Basic ${auth}`,
-                'Accept': 'application/json',
-            },
-        });
-
-        if (!response.ok) {
-            if (response.status === 401) throw new Error("Authentication failed. Check credentials.");
-            if (response.status === 404) throw new Error(`ORD not found: ${parentPath}`);
-            throw new Error(`Station responded with ${response.status}: ${response.statusText}`);
-        }
-        return await response.json();
-    }
-
-    async function clientDiscoverAllOrds(startPath: string, url: string, user: string, pass: string): Promise<string[]> {
-        const foundOrds: Set<string> = new Set();
-        const visitedPaths: Set<string> = new Set();
-
-        async function crawl(path: string, depth: number = 0) {
-            if (depth > 20 || visitedPaths.has(path)) return;
-            visitedPaths.add(path);
-
-            try {
-                const data = await clientFetchNiagaraChildren(path, url, user, pass);
-                if (data && Array.isArray(data.children)) {
-                    for (const child of data.children) {
-                        const isPoint = (child.type || '').toLowerCase().includes('point');
-                        
-                        if (isPoint) {
-                            foundOrds.add(child.ord);
-                        } else {
-                           await crawl(child.ord, depth + 1);
-                        }
-                    }
-                }
-            } catch (e) {
-                // If the very first call (depth 0) fails, we MUST throw the error so the UI can report it.
-                // Otherwise, it's just a branch we can't explore, so we warn and continue.
-                if (depth === 0) {
-                    throw e; // Re-throw the error to be caught by handleAutoDiscover
-                } else {
-                    console.warn(`Skipping path ${path}:`, e);
-                }
-            }
-        }
-
-        await crawl(startPath);
-        return Array.from(foundOrds);
-    }
-
     const handleAutoDiscover = async () => {
-        if (!niagaraUrl || !niagaraUser || !niagaraPass) {
-            toast({
-                title: "Missing Credentials",
-                description: "Please provide the Station URL, Username, and Password.",
-                variant: "destructive",
-            });
-            return;
-        }
-
         setIsFetching(true);
+        setRawOrds('');
+        setMapping(null);
         try {
-            const discovered = await clientDiscoverAllOrds(startPath, niagaraUrl, niagaraUser, niagaraPass);
+            const discovered = await discoverAllOrds(startPath);
+            
             if (discovered.length === 0) {
                 toast({
-                    title: "Connection Succeeded",
-                    description: "Successfully connected, but found no points. Check the start path and ensure the user has read permissions for that folder.",
+                    title: "Discovery Succeeded",
+                    description: "Successfully connected, but found no points. Check the start path and ensure the user account has read permissions for that folder.",
                     variant: "default"
                 });
             } else {
@@ -143,24 +75,9 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             }
         } catch (error: any) {
             console.error("Discovery Error:", error);
-            
-            let title = "Connection Failed";
-            let description = "Could not connect to the station. Check the URL and ensure you are on the same network.";
-
-            // This error often indicates a network problem (bad URL) or a CORS issue.
-            if (error instanceof TypeError) {
-                 description = "This is likely a CORS issue or network problem. Your Niagara station must be configured to allow requests from this website. Check the browser console (F12) for details."
-            } else if (error.message.includes("Authentication failed")) {
-                title = "Authentication Failed";
-                description = "Connection was established, but the username or password was incorrect."
-            } else if (error.message.includes("ORD not found")) {
-                title = "Start Path Not Found";
-                description = `Connected successfully, but the start path "${startPath}" was not found.`
-            }
-
             toast({
-                title: title,
-                description: description,
+                title: "Discovery Failed",
+                description: error.message || "An unknown error occurred during discovery.",
                 variant: "destructive",
                 duration: 9000,
             });
@@ -211,7 +128,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 points
             }));
 
-            const scriptPreview = `/**\n * Auto-generated Niagara Script\n * Room: {{RoomName}}\n */\n\npublic void onExecute() {\n${
+            const scriptPreview = `/**\n * Auto-generated Niagara Script\n * Room: {{RoomName}}\n */\n\public void onExecute() {\n${
                 rooms.map(r => 
                     `  // Points for ${r.roomName}\n` + 
                     r.points.map(p => `  BStatusNumeric ${p.label.replace(/\s+/g, '')} = (BStatusNumeric) get("${p.ord}");`).join('\n')
@@ -253,46 +170,13 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     </TabsList>
                     
                     <TabsContent value="discovery" className="space-y-3 pt-2">
-                        <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive">
-                            <AlertCircle className="h-4 w-4" />
-                            <AlertTitle>Local Connection Method</AlertTitle>
+                        <Alert variant="default" className="border-primary/20 bg-primary/10 text-primary-foreground">
+                            <Terminal className="h-4 w-4 text-primary" />
+                            <AlertTitle>Server-Side Connection</AlertTitle>
                             <AlertDescription className="text-xs">
-                                This requires your Niagara station to have CORS enabled for this website's domain. Credentials are handled locally in your browser.
+                                This tool now uses a secure server-side connection. Please ensure your Niagara credentials are set in the <code>.env</code> file and restart your local dev server.
                             </AlertDescription>
                         </Alert>
-                        <div className="space-y-1.5">
-                            <Label htmlFor="niagara-url">Station URL (Local)</Label>
-                            <Input 
-                                id="niagara-url"
-                                value={niagaraUrl} 
-                                onChange={(e) => setNiagaraUrl(e.target.value)}
-                                placeholder="https://192.168.1.225"
-                                className="font-mono text-xs"
-                            />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1.5">
-                                <Label htmlFor="niagara-user">Username</Label>
-                                <Input 
-                                    id="niagara-user"
-                                    value={niagaraUser} 
-                                    onChange={(e) => setNiagaraUser(e.target.value)}
-                                    placeholder="API username"
-                                    className="font-mono text-xs"
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label htmlFor="niagara-pass">Password</Label>
-                                <Input 
-                                    id="niagara-pass"
-                                    type="password"
-                                    value={niagaraPass} 
-                                    onChange={(e) => setNiagaraPass(e.target.value)}
-                                    placeholder="Password"
-                                    className="font-mono text-xs"
-                                />
-                            </div>
-                        </div>
                         <div className="space-y-1.5">
                             <Label htmlFor="start-path">Discovery Root Path</Label>
                             <div className="flex gap-2">
@@ -300,7 +184,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                                     id="start-path"
                                     value={startPath} 
                                     onChange={(e) => setStartPath(e.target.value)}
-                                    placeholder="e.g. config/Drivers"
+                                    placeholder="e.g. Config"
                                     className="font-mono text-xs"
                                 />
                                 <Button 
@@ -312,7 +196,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                                     {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
                                 </Button>
                             </div>
-                            <p className="text-[10px] text-muted-foreground italic">Connects directly from your browser. CORS must be enabled on station.</p>
+                            <p className="text-[10px] text-muted-foreground italic">Connects from the local server. No CORS required.</p>
                         </div>
                     </TabsContent>
 

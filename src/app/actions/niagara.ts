@@ -16,7 +16,7 @@ const NIAGARA_PASS = process.env.NIAGARA_PASSWORD;
  */
 export async function fetchNiagaraChildren(parentPath: string) {
   if (!NIAGARA_URL || !NIAGARA_USER || !NIAGARA_PASS) {
-    throw new Error("Niagara connection details are not configured in .env. Please add NIAGARA_URL, NIAGARA_USERNAME, and NIAGARA_PASSWORD.");
+    throw new Error("Niagara connection details are not configured in the .env file. Please add NIAGARA_URL, NIAGARA_USERNAME, and NIAGARA_PASSWORD and restart the development server.");
   }
 
   const auth = Buffer.from(`${NIAGARA_USER}:${NIAGARA_PASS}`).toString('base64');
@@ -35,7 +35,7 @@ export async function fetchNiagaraChildren(parentPath: string) {
     });
 
     if (!response.ok) {
-      if (response.status === 401) throw new Error("Authentication failed. Check Niagara credentials.");
+      if (response.status === 401) throw new Error("Authentication failed. Check NIAGARA_USERNAME and NIAGARA_PASSWORD in your .env file.");
       if (response.status === 404) throw new Error(`ORD not found: ${parentPath}`);
       throw new Error(`Station responded with ${response.status}: ${response.statusText}`);
     }
@@ -43,6 +43,10 @@ export async function fetchNiagaraChildren(parentPath: string) {
     return await response.json();
   } catch (error: any) {
     console.error("Niagara Fetch Error:", error);
+    // This often happens if the URL is wrong, the server isn't running, or it's a network issue.
+    if (error.cause?.code === 'ENOTFOUND' || error.cause?.code === 'ECONNREFUSED') {
+      throw new Error(`Could not connect to the Niagara station at ${NIAGARA_URL}. Ensure the URL is correct in your .env file and that you are on the same network.`);
+    }
     throw new Error(error.message || "Failed to connect to the Niagara station.");
   }
 }
@@ -63,25 +67,24 @@ export async function discoverAllOrds(startPath: string): Promise<string[]> {
     try {
       const data = await fetchNiagaraChildren(path);
       
-      // Expected Niagara JSON response schema: { children: [ { ord: "...", type: "..." }, ... ] }
       if (data && Array.isArray(data.children)) {
         for (const child of data.children) {
-          const isContainer = child.type === 'Folder' || 
-                              child.type === 'Device' || 
-                              child.type === 'Container' ||
-                              child.type.toLowerCase().includes('folder');
+          const isPoint = (child.type || '').toLowerCase().includes('point');
 
-          const isPoint = child.type.toLowerCase().includes('point');
-
-          if (isContainer) {
-            await crawl(child.ord, depth + 1);
-          } else if (isPoint) {
+          if (isPoint) {
             foundOrds.add(child.ord);
+          } else {
+            // Aggressively assume anything not a point could be a container
+            await crawl(child.ord, depth + 1);
           }
         }
       }
     } catch (e) {
-      console.warn(`Skipping path ${path}:`, e);
+        // If the root path fails, the initial call will throw.
+        // In here, we can assume a failure means we tried to crawl a leaf node (like a Program object).
+        // We can safely ignore this and continue with other branches.
+        if (depth === 0) throw e;
+        console.warn(`Skipping path ${path} (not a container or insufficient permissions).`);
     }
   }
 
