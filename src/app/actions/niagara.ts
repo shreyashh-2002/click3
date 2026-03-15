@@ -13,6 +13,11 @@ export type NiagaraCredentials = {
 };
 
 /**
+ * Helper to add a delay between requests.
+ */
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
  * Proxies a read request to a Niagara station with a timeout.
  */
 export async function proxyFetchOrd(path: string, creds: NiagaraCredentials) {
@@ -40,6 +45,7 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials) {
     if (!response.ok) {
       if (response.status === 401) throw new Error("Niagara Authentication failed. Check username/password.");
       if (response.status === 404) throw new Error(`ORD not found: ${path}`);
+      if (response.status === 503) throw new Error("Station Busy (503). The station is rejecting requests. Wait a moment and try again.");
       throw new Error(`Station error: ${response.status} ${response.statusText}`);
     }
 
@@ -68,23 +74,29 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
   const foundOrds: Set<string> = new Set();
   const visitedPaths: Set<string> = new Set();
   let requestCount = 0;
-  const MAX_REQUESTS = 100; // Safety limit to prevent infinite loops or long hangs
+  const MAX_REQUESTS = 100; // Safety limit to prevent long hangs
 
   async function crawl(path: string, depth: number = 0) {
-    if (depth > 10 || visitedPaths.has(path) || requestCount >= MAX_REQUESTS) return;
+    if (depth > 8 || visitedPaths.has(path) || requestCount >= MAX_REQUESTS) return;
     visitedPaths.add(path);
     requestCount++;
+
+    // Politeness Delay: Wait 200ms before each request to avoid 503 errors
+    await sleep(200);
 
     try {
       const data = await proxyFetchOrd(path, creds);
       
       if (data && Array.isArray(data.children)) {
         for (const child of data.children) {
-          const isPoint = (child.type || '').toLowerCase().includes('point');
+          const type = (child.type || '').toLowerCase();
+          const isPoint = type.includes('point');
+          const isFolder = type.includes('folder') || type.includes('device') || type.includes('network');
+          
           if (isPoint) {
             foundOrds.add(child.ord);
-          } else {
-            // Recursive discovery
+          } else if (isFolder && depth < 8) {
+            // Recursive discovery with a limit
             await crawl(child.ord, depth + 1);
           }
         }
@@ -92,6 +104,10 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
     } catch (e: any) {
       if (depth === 0) throw e; // Fail fast if the root path fails
       console.warn(`Skipping child path ${path}: ${e.message}`);
+      // If we hit a 503, stop crawling to let the station recover
+      if (e.message.includes('503')) {
+        throw e;
+      }
     }
   }
 
