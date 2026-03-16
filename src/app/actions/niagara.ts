@@ -7,6 +7,9 @@
  * better error feedback for networking constraints.
  */
 
+// This allows the server to talk to JACEs with self-signed certificates.
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 export type NiagaraCredentials = {
   url: string;
   user: string;
@@ -35,18 +38,12 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials) {
     }
   }
 
-  // Build the URL. We don't fully encode it because Niagara's /ord/ servlet 
-  // needs to see the raw "station:|slot:/" prefix correctly.
   const url = `${baseUrl}/ord/${cleanPath}`;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
 
   try {
-    // Note: process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0' is often needed 
-    // for JACEs with self-signed certs. We handle this via the fetch options if supported,
-    // or by catching the specific "CERT_HAS_EXPIRED" or "DEPTH_ZERO_SELF_SIGNED_CERT" errors.
-    
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -55,8 +52,6 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials) {
       },
       next: { revalidate: 0 },
       signal: controller.signal,
-      // @ts-ignore - Some environments support bypassing SSL in fetch
-      cache: 'no-store'
     });
 
     clearTimeout(timeoutId);
@@ -76,13 +71,9 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials) {
     if (error.name === 'AbortError') throw new Error("TIMEOUT");
     if (error.code === 'ECONNREFUSED') throw new Error("CONNECTION_REFUSED");
     if (error.code === 'ENETUNREACH' || error.code === 'EHOSTUNREACH') {
-       throw new Error("NETWORK_UNREACHABLE: Cloud server cannot reach your Local IP.");
-    }
-    if (error.message.includes('self-signed') || error.code === 'DEPTH_ZERO_SELF_SIGNED_CERT') {
-       throw new Error("SSL_CERT_ERROR: Self-signed certificate rejected. Enable 'Basic Auth' or use HTTP if possible.");
+       throw new Error("NETWORK_UNREACHABLE: The server cannot find this IP. Local IPs (192.168.x.x) only work if the app is running locally.");
     }
     
-    console.error("Fetch Error Detail:", error.message, error.code);
     throw error;
   }
 }
@@ -100,7 +91,6 @@ export async function testNiagaraConnection(creds: NiagaraCredentials) {
     };
   } catch (error: any) {
     console.error("Test Connection Error:", error.message);
-    // Convert error to a string message for the UI
     return { 
       success: false, 
       error: error.message || "Unknown error connecting to station."
@@ -146,8 +136,7 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
             type.includes('folder') || 
             type.includes('device') || 
             type.includes('network') ||
-            type.includes('container') ||
-            (Array.isArray(child.children) && child.children.length > 0);
+            type.includes('container');
           
           if (ord.toLowerCase().includes('/services')) continue;
 
@@ -163,6 +152,11 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
     }
   }
 
-  await crawl(startPath);
-  return Array.from(foundOrds);
+  try {
+    await crawl(startPath);
+    return Array.from(foundOrds);
+  } catch (error: any) {
+    console.error("Discovery Error:", error.message);
+    throw error;
+  }
 }

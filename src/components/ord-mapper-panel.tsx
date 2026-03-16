@@ -43,7 +43,6 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
     const [isLoading, setIsLoading] = useState(false);
     const [isFetching, setIsFetching] = useState(false);
     const [isTesting, setIsTesting] = useState(false);
-    const [isDirectMode, setIsDirectMode] = useState(false);
     const [fetchError, setFetchError] = useState<string | null>(null);
     const [connectedStation, setConnectedStation] = useState<string | null>(null);
     const { toast } = useToast();
@@ -51,14 +50,11 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
     useEffect(() => {
         setStationUrl(localStorage.getItem('niagara-url') || '');
         setUsername(localStorage.getItem('niagara-user') || '');
-        const savedMode = localStorage.getItem('niagara-direct-mode');
-        if (savedMode) setIsDirectMode(savedMode === 'true');
     }, []);
 
     const saveCredentials = () => {
         localStorage.setItem('niagara-url', stationUrl);
         localStorage.setItem('niagara-user', username);
-        localStorage.setItem('niagara-direct-mode', isDirectMode.toString());
     };
 
     const handleTestConnection = async () => {
@@ -87,19 +83,9 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 });
             } else {
                 setFetchError(result.error || "Connection failed.");
-                toast({ 
-                    title: "Connection Failed", 
-                    description: result.error || "Check error log.",
-                    variant: "destructive" 
-                });
             }
         } catch (error: any) {
-            setFetchError("Critical Server Error. Check if your JACE is accessible from the internet.");
-            toast({ 
-                title: "Server Error", 
-                description: "The connection attempt crashed. Is the IP correct?",
-                variant: "destructive" 
-            });
+            setFetchError("Server side error occurred. This usually happens when the local IP is unreachable from the cloud.");
         } finally {
             setIsTesting(false);
         }
@@ -118,8 +104,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
         saveCredentials();
 
         try {
-            let ords: string[] = [];
-            ords = await discoverOrdsServer(startPath, {
+            const ords = await discoverOrdsServer(startPath, {
                 url: stationUrl,
                 user: username,
                 pass: password
@@ -133,7 +118,6 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             }
         } catch (error: any) {
             setFetchError(error.message || "Discovery failed.");
-            toast({ title: "Discovery Error", description: error.message, variant: "destructive" });
         } finally {
             setIsFetching(false);
         }
@@ -185,11 +169,6 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
         }, 300);
     };
 
-    const copyToClipboard = (text: string) => {
-        navigator.clipboard.writeText(text);
-        toast({ title: "Copied!", description: "Content copied to clipboard." });
-    };
-
     return (
         <DraggablePanel
             id="ord-mapper-panel"
@@ -204,12 +183,12 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     <Network className="h-4 w-4 text-blue-500" />
                     <AlertTitle className="text-xs font-bold text-blue-600 uppercase">Networking Note</AlertTitle>
                     <AlertDescription className="text-[10px] text-blue-700 leading-tight">
-                        Local IPs (192.168.x.x) only work if this app is running on your local PC. Cloud servers cannot see private networks.
+                        The cloud server cannot see your private local IP (192.168.x.x). For this to work, you must run this project on your local machine using "npm run dev".
                     </AlertDescription>
                 </Alert>
 
                 {connectedStation && (
-                    <Alert className="bg-green-500/10 border-green-500/20 py-2 px-3 animate-in fade-in zoom-in-95">
+                    <Alert className="bg-green-500/10 border-green-500/20 py-2 px-3">
                         <CheckCircle2 className="h-4 w-4 text-green-500" />
                         <AlertTitle className="text-xs font-bold text-green-600">Connected</AlertTitle>
                         <AlertDescription className="text-[10px] text-green-700">
@@ -219,9 +198,9 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 )}
 
                 {fetchError && (
-                    <Alert variant="destructive" className="py-2 px-3 animate-in fade-in slide-in-from-top-1">
+                    <Alert variant="destructive" className="py-2 px-3">
                         <AlertCircle className="h-4 w-4" />
-                        <AlertTitle className="text-xs">Connection Warning</AlertTitle>
+                        <AlertTitle className="text-xs">Connection Error</AlertTitle>
                         <AlertDescription className="text-[10px] leading-tight">
                             {fetchError}
                         </AlertDescription>
