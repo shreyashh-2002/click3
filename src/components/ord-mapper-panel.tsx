@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Loader2, Copy, Filter, Globe, Zap, ShieldCheck, AlertCircle, Info, Lock, CheckCircle2 } from 'lucide-react';
+import { Database, Loader2, Copy, Filter, Globe, Zap, ShieldCheck, AlertCircle, Info, Lock, CheckCircle2, Network } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { discoverOrdsServer, testNiagaraConnection } from '@/app/actions/niagara';
@@ -85,17 +85,19 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     title: "Connection Success!", 
                     description: `Successfully reached station: ${result.stationName}`,
                 });
+            } else {
+                setFetchError(result.error || "Connection failed.");
+                toast({ 
+                    title: "Connection Failed", 
+                    description: result.error || "Check error log.",
+                    variant: "destructive" 
+                });
             }
         } catch (error: any) {
-            let msg = error.message;
-            if (msg === 'AUTH_FAILED') msg = "Invalid Username or Password. Check credentials.";
-            if (msg === 'STATION_BUSY') msg = "Station is busy. Try again shortly.";
-            if (msg === 'TIMEOUT') msg = "Connection timed out. Verify URL and Network.";
-            
-            setFetchError(msg || "Connection failed.");
+            setFetchError("Critical Server Error. Check if your JACE is accessible from the internet.");
             toast({ 
-                title: "Connection Failed", 
-                description: msg || "See error box for details.",
+                title: "Server Error", 
+                description: "The connection attempt crashed. Is the IP correct?",
                 variant: "destructive" 
             });
         } finally {
@@ -117,62 +119,21 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
 
         try {
             let ords: string[] = [];
-
-            if (isDirectMode) {
-                toast({ title: "CORS Warning", description: "Direct mode often fails due to browser security. Use Server Proxy instead.", variant: "destructive" });
-                const auth = btoa(`${username}:${password}`);
-                const baseUrl = stationUrl.endsWith('/') ? stationUrl.slice(0, -1) : stationUrl;
-                
-                let cleanPath = startPath;
-                if (!cleanPath.startsWith('slot:/')) cleanPath = `slot:/${cleanPath.replace(/^\/+/, '')}`;
-                
-                const url = `${baseUrl}/api/v1/read?ord=${encodeURIComponent(cleanPath)}`;
-                
-                const response = await fetch(url, {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Basic ${auth}`,
-                        'Accept': 'application/json',
-                    },
-                });
-
-                if (!response.ok) {
-                    if (response.status === 401) throw new Error("AUTH_FAILED");
-                    throw new Error(`Browser fetch failed: ${response.status}`);
-                }
-                const data = await response.json();
-                
-                if (data && Array.isArray(data.children)) {
-                    ords = data.children.map((c: any) => c.ord);
-                }
-            } else {
-                ords = await discoverOrdsServer(startPath, {
-                    url: stationUrl,
-                    user: username,
-                    pass: password
-                });
-            }
+            ords = await discoverOrdsServer(startPath, {
+                url: stationUrl,
+                user: username,
+                pass: password
+            });
 
             if (ords.length === 0) {
-                setFetchError("Discovery finished but no points were found. Try a more specific path (e.g. Config/Drivers) or check permissions.");
+                setFetchError("Discovery finished but no points were found. Ensure the path exists.");
             } else {
                 setRawOrds(ords.join('\n'));
                 toast({ title: "Discovery Complete", description: `Found ${ords.length} ORDs.` });
             }
         } catch (error: any) {
-            console.error("Discovery Error:", error);
-            let msg = error.message;
-            if (msg === 'AUTH_FAILED') msg = "Invalid Username or Password. Check credentials.";
-            if (msg === 'STATION_BUSY') msg = "Niagara station is busy (503). Try again in a minute.";
-            if (msg === 'TIMEOUT') msg = "Request timed out. The station is slow to respond.";
-            
-            setFetchError(msg || "Connection failed. Verify URL and network.");
-            
-            toast({ 
-                title: "Discovery Error", 
-                description: msg || "Check connectivity.",
-                variant: "destructive" 
-            });
+            setFetchError(error.message || "Discovery failed.");
+            toast({ title: "Discovery Error", description: error.message, variant: "destructive" });
         } finally {
             setIsFetching(false);
         }
@@ -239,36 +200,20 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             className="w-[450px]"
         >
             <div className="space-y-4">
-                <div className="flex items-center justify-between p-2 bg-muted/50 rounded-lg border border-border/50">
-                    <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1">
-                            {isDirectMode ? <Zap className="size-3 text-yellow-500" /> : <ShieldCheck className="size-3 text-blue-500" />}
-                            Connection Mode
-                        </span>
-                        <span className="text-xs font-medium">
-                            {isDirectMode ? "Direct (Browser)" : "Server Proxy (Recommended)"}
-                        </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Label htmlFor="mode-toggle" className="sr-only">Toggle Mode</Label>
-                        <Switch 
-                            id="mode-toggle" 
-                            checked={isDirectMode} 
-                            onCheckedChange={(checked) => {
-                                setIsDirectMode(checked);
-                                localStorage.setItem('niagara-direct-mode', checked.toString());
-                                setFetchError(null);
-                            }}
-                        />
-                    </div>
-                </div>
+                <Alert className="bg-blue-500/5 border-blue-500/20 py-2 px-3">
+                    <Network className="h-4 w-4 text-blue-500" />
+                    <AlertTitle className="text-xs font-bold text-blue-600 uppercase">Networking Note</AlertTitle>
+                    <AlertDescription className="text-[10px] text-blue-700 leading-tight">
+                        Local IPs (192.168.x.x) only work if this app is running on your local PC. Cloud servers cannot see private networks.
+                    </AlertDescription>
+                </Alert>
 
                 {connectedStation && (
                     <Alert className="bg-green-500/10 border-green-500/20 py-2 px-3 animate-in fade-in zoom-in-95">
                         <CheckCircle2 className="h-4 w-4 text-green-500" />
-                        <AlertTitle className="text-xs font-bold text-green-600">Proof of Connection</AlertTitle>
+                        <AlertTitle className="text-xs font-bold text-green-600">Connected</AlertTitle>
                         <AlertDescription className="text-[10px] text-green-700">
-                            Successfully linked to station: <strong>{connectedStation}</strong>
+                            Verified connection to: <strong>{connectedStation}</strong>
                         </AlertDescription>
                     </Alert>
                 )}
@@ -283,52 +228,36 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     </Alert>
                 )}
 
-                <Tabs defaultValue="discovery" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="discovery">Discovery</TabsTrigger>
-                        <TabsTrigger value="manual">Manual</TabsTrigger>
-                    </TabsList>
-                    
-                    <TabsContent value="discovery" className="space-y-3 pt-2">
-                         <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1.5">
-                                <Label htmlFor="niagara-user">Username</Label>
-                                <Input id="niagara-user" value={username} onChange={(e) => setUsername(e.target.value)} onBlur={saveCredentials} />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label htmlFor="niagara-pass">Password</Label>
-                                <Input id="niagara-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-                            </div>
+                <div className="space-y-3 pt-2">
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1.5">
+                            <Label htmlFor="niagara-user">Username</Label>
+                            <Input id="niagara-user" value={username} onChange={(e) => setUsername(e.target.value)} onBlur={saveCredentials} />
                         </div>
                         <div className="space-y-1.5">
-                            <Label htmlFor="niagara-url">Station URL</Label>
-                            <div className="flex gap-2">
-                                <Input id="niagara-url" value={stationUrl} onChange={(e) => setStationUrl(e.target.value)} placeholder="http://192.168.1.225" onBlur={saveCredentials} />
-                                <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={isTesting}>
-                                    {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Test"}
-                                </Button>
-                            </div>
+                            <Label htmlFor="niagara-pass">Password</Label>
+                            <Input id="niagara-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
                         </div>
-                        <div className="space-y-1.5">
-                            <Label htmlFor="start-path">Discovery Root Path</Label>
-                            <div className="flex gap-2">
-                                <Input id="start-path" value={startPath} onChange={(e) => setStartPath(e.target.value)} className="font-mono text-xs" placeholder="Config" />
-                                <Button variant="secondary" onClick={handleAutoDiscover} disabled={isFetching}>
-                                    {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
-                                </Button>
-                            </div>
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label htmlFor="niagara-url">Station URL (HTTPS)</Label>
+                        <div className="flex gap-2">
+                            <Input id="niagara-url" value={stationUrl} onChange={(e) => setStationUrl(e.target.value)} placeholder="https://192.168.1.225" onBlur={saveCredentials} />
+                            <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={isTesting}>
+                                {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Test"}
+                            </Button>
                         </div>
-                    </TabsContent>
-
-                    <TabsContent value="manual" className="pt-2">
-                        <Textarea
-                            value={rawOrds}
-                            onChange={(e) => setRawOrds(e.target.value)}
-                            placeholder="Paste raw ORDs (one per line)..."
-                            className="h-24 font-mono text-xs resize-none bg-muted/50"
-                        />
-                    </TabsContent>
-                </Tabs>
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label htmlFor="start-path">Root Path</Label>
+                        <div className="flex gap-2">
+                            <Input id="start-path" value={startPath} onChange={(e) => setStartPath(e.target.value)} className="font-mono text-xs" placeholder="Config" />
+                            <Button variant="secondary" onClick={handleAutoDiscover} disabled={isFetching}>
+                                {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
 
                 <Button onClick={handleProcess} disabled={isLoading || !rawOrds} className="w-full shadow-lg">
                     {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Filter className="mr-2 h-4 w-4" />}
@@ -336,40 +265,21 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 </Button>
 
                 {mapping && (
-                     <Tabs defaultValue="mapped" className="w-full mt-4">
-                        <TabsList className="grid w-full grid-cols-2">
-                            <TabsTrigger value="mapped">Mapped Zones</TabsTrigger>
-                            <TabsTrigger value="script">Script</TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="mapped" className="mt-4 space-y-4 max-h-80 overflow-auto pr-2">
-                            {mapping.rooms.map((room, idx) => (
-                                <div key={idx} className="border rounded-md p-3 bg-muted/30">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <h4 className="font-bold text-sm text-primary">{room.roomName}</h4>
-                                        <span className="text-[9px] font-normal text-muted-foreground bg-background px-1.5 py-0.5 rounded-full border border-border/50">{room.points.length} pts</span>
-                                    </div>
-                                    <ul className="space-y-1">
-                                        {room.points.map((p, pIdx) => (
-                                            <li key={pIdx} className="text-[11px] flex justify-between items-center border-b border-border/50 pb-1 last:border-0 last:pb-0">
-                                                <span className="font-medium truncate mr-2" title={p.ord}>{p.label}</span>
-                                                <span className="text-[8px] uppercase px-1 rounded bg-primary/10 text-primary shrink-0">{p.category}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            ))}
-                        </TabsContent>
-                        <TabsContent value="script" className="mt-4">
-                            <div className="relative group">
-                                <Button size="icon" variant="secondary" className="absolute right-2 top-2 h-8 w-8 z-10" onClick={() => copyToClipboard(mapping.generatedScriptPreview)}>
-                                    <Copy className="h-4 w-4" />
-                                </Button>
-                                <pre className="bg-muted p-4 rounded-md text-[10px] font-mono whitespace-pre-wrap overflow-x-auto max-h-80">
-                                    <code>{mapping.generatedScriptPreview}</code>
-                                </pre>
+                    <div className="mt-4 space-y-4 max-h-80 overflow-auto pr-2">
+                        {mapping.rooms.map((room, idx) => (
+                            <div key={idx} className="border rounded-md p-3 bg-muted/30">
+                                <h4 className="font-bold text-sm text-primary mb-2">{room.roomName}</h4>
+                                <ul className="space-y-1">
+                                    {room.points.map((p, pIdx) => (
+                                        <li key={pIdx} className="text-[11px] flex justify-between">
+                                            <span>{p.label}</span>
+                                            <span className="text-[8px] uppercase px-1 rounded bg-primary/10 text-primary">{p.category}</span>
+                                        </li>
+                                    ))}
+                                </ul>
                             </div>
-                        </TabsContent>
-                    </Tabs>
+                        ))}
+                    </div>
                 )}
             </div>
         </DraggablePanel>
