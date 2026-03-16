@@ -65,6 +65,23 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials) {
 }
 
 /**
+ * Verifies connectivity and returns station info.
+ */
+export async function testNiagaraConnection(creds: NiagaraCredentials) {
+  try {
+    const data = await proxyFetchOrd('slot:/', creds);
+    return {
+      success: true,
+      stationName: data.name || data.stationName || "Niagara Station",
+      type: data.type || "BStation"
+    };
+  } catch (error: any) {
+    console.error("Test Connection Error:", error);
+    throw error;
+  }
+}
+
+/**
  * Server-side crawler to discover all ORDs.
  */
 export async function discoverOrdsServer(startPath: string, creds: NiagaraCredentials): Promise<string[]> {

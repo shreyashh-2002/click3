@@ -6,10 +6,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Loader2, Copy, Filter, Globe, Zap, ShieldCheck, AlertCircle, Info, Lock } from 'lucide-react';
+import { Database, Loader2, Copy, Filter, Globe, Zap, ShieldCheck, AlertCircle, Info, Lock, CheckCircle2 } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { discoverOrdsServer } from '@/app/actions/niagara';
+import { discoverOrdsServer, testNiagaraConnection } from '@/app/actions/niagara';
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -42,8 +42,10 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
     const [mapping, setMapping] = useState<PointMappingOutput | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isFetching, setIsFetching] = useState(false);
+    const [isTesting, setIsTesting] = useState(false);
     const [isDirectMode, setIsDirectMode] = useState(false);
     const [fetchError, setFetchError] = useState<string | null>(null);
+    const [connectedStation, setConnectedStation] = useState<string | null>(null);
     const { toast } = useToast();
 
     useEffect(() => {
@@ -57,6 +59,48 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
         localStorage.setItem('niagara-url', stationUrl);
         localStorage.setItem('niagara-user', username);
         localStorage.setItem('niagara-direct-mode', isDirectMode.toString());
+    };
+
+    const handleTestConnection = async () => {
+        if (!stationUrl || !username || !password) {
+            toast({ title: "Missing Credentials", description: "Please enter Station URL, Username, and Password.", variant: "destructive" });
+            return;
+        }
+
+        setIsTesting(true);
+        setFetchError(null);
+        setConnectedStation(null);
+        saveCredentials();
+
+        try {
+            const result = await testNiagaraConnection({
+                url: stationUrl,
+                user: username,
+                pass: password
+            });
+
+            if (result.success) {
+                setConnectedStation(result.stationName);
+                toast({ 
+                    title: "Connection Success!", 
+                    description: `Successfully reached station: ${result.stationName}`,
+                });
+            }
+        } catch (error: any) {
+            let msg = error.message;
+            if (msg === 'AUTH_FAILED') msg = "Invalid Username or Password. Check credentials.";
+            if (msg === 'STATION_BUSY') msg = "Station is busy. Try again shortly.";
+            if (msg === 'TIMEOUT') msg = "Connection timed out. Verify URL and Network.";
+            
+            setFetchError(msg || "Connection failed.");
+            toast({ 
+                title: "Connection Failed", 
+                description: msg || "See error box for details.",
+                variant: "destructive" 
+            });
+        } finally {
+            setIsTesting(false);
+        }
     };
 
     const handleAutoDiscover = async () => {
@@ -110,7 +154,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             }
 
             if (ords.length === 0) {
-                setFetchError("Discovery finished but no points were found. Try a more specific path or check point types.");
+                setFetchError("Discovery finished but no points were found. Try a more specific path (e.g. Config/Drivers) or check permissions.");
             } else {
                 setRawOrds(ords.join('\n'));
                 toast({ title: "Discovery Complete", description: `Found ${ords.length} ORDs.` });
@@ -219,10 +263,20 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     </div>
                 </div>
 
+                {connectedStation && (
+                    <Alert className="bg-green-500/10 border-green-500/20 py-2 px-3 animate-in fade-in zoom-in-95">
+                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                        <AlertTitle className="text-xs font-bold text-green-600">Proof of Connection</AlertTitle>
+                        <AlertDescription className="text-[10px] text-green-700">
+                            Successfully linked to station: <strong>{connectedStation}</strong>
+                        </AlertDescription>
+                    </Alert>
+                )}
+
                 {fetchError && (
                     <Alert variant="destructive" className="py-2 px-3 animate-in fade-in slide-in-from-top-1">
                         <AlertCircle className="h-4 w-4" />
-                        <AlertTitle className="text-xs">Discovery Result</AlertTitle>
+                        <AlertTitle className="text-xs">Connection Warning</AlertTitle>
                         <AlertDescription className="text-[10px] leading-tight">
                             {fetchError}
                         </AlertDescription>
@@ -248,7 +302,12 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                         </div>
                         <div className="space-y-1.5">
                             <Label htmlFor="niagara-url">Station URL</Label>
-                            <Input id="niagara-url" value={stationUrl} onChange={(e) => setStationUrl(e.target.value)} placeholder="http://192.168.1.225" onBlur={saveCredentials} />
+                            <div className="flex gap-2">
+                                <Input id="niagara-url" value={stationUrl} onChange={(e) => setStationUrl(e.target.value)} placeholder="http://192.168.1.225" onBlur={saveCredentials} />
+                                <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={isTesting}>
+                                    {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Test"}
+                                </Button>
+                            </div>
                         </div>
                         <div className="space-y-1.5">
                             <Label htmlFor="start-path">Discovery Root Path</Label>
