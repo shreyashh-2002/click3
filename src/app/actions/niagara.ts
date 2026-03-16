@@ -3,7 +3,8 @@
 /**
  * @fileOverview Server Actions for interacting with Niagara 4.
  * 
- * Updated to use the /ord/ servlet path and station:|slot:/ prefix.
+ * Updated to use the /ord/ servlet path and station:|slot:/ prefix 
+ * as verified by the user's working URL.
  */
 
 export type NiagaraCredentials = {
@@ -13,13 +14,12 @@ export type NiagaraCredentials = {
 };
 
 /**
- * Helper to add a delay between requests.
+ * Helper to add a delay between requests to avoid overwhelming the JACE.
  */
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * Proxies a read request to a Niagara station.
- * Uses the /ord/ servlet format confirmed by the user.
+ * Proxies a read request to a Niagara station using the /ord/ servlet.
  */
 export async function proxyFetchOrd(path: string, creds: NiagaraCredentials) {
   const auth = Buffer.from(`${creds.user}:${creds.pass}`).toString('base64');
@@ -31,11 +31,12 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials) {
     if (cleanPath.startsWith('slot:/')) {
       cleanPath = `station:|${cleanPath}`;
     } else {
+      // Handle simple paths like "Config" or "/Config"
       cleanPath = `station:|slot:/${cleanPath.replace(/^\/+/, '')}`;
     }
   }
 
-  // Use the /ord/ servlet path confirmed by the user
+  // Use the /ord/ servlet path confirmed by the user: https://[IP]/ord/[ORD]
   const url = `${baseUrl}/ord/${encodeURIComponent(cleanPath)}`;
 
   const controller = new AbortController();
@@ -46,7 +47,7 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials) {
       method: 'GET',
       headers: {
         'Authorization': `Basic ${auth}`,
-        'Accept': 'application/json', // Request JSON data
+        'Accept': 'application/json', // Request JSON data from the ORD servlet
       },
       next: { revalidate: 0 },
       signal: controller.signal
@@ -70,11 +71,11 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials) {
 }
 
 /**
- * Verifies connectivity and returns station info.
+ * Verifies connectivity and returns station info using the /ord/ servlet.
  */
 export async function testNiagaraConnection(creds: NiagaraCredentials) {
   try {
-    // Try to read the station root
+    // Try to read the station root using the working ORD path
     const data = await proxyFetchOrd('station:|slot:/', creds);
     return {
       success: true,
@@ -88,7 +89,7 @@ export async function testNiagaraConnection(creds: NiagaraCredentials) {
 }
 
 /**
- * Server-side crawler to discover all ORDs.
+ * Server-side crawler to discover all ORDs using the /ord/ servlet.
  */
 export async function discoverOrdsServer(startPath: string, creds: NiagaraCredentials): Promise<string[]> {
   const foundOrds: Set<string> = new Set();
@@ -103,7 +104,7 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
     requestCount++;
 
     // Politeness Delay
-    await sleep(500);
+    await sleep(400);
 
     try {
       const data = await proxyFetchOrd(path, creds);
@@ -113,7 +114,7 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
           const type = (child.type || '').toLowerCase();
           const ord = child.ord || '';
           
-          // Detect points: Anything with a value, status, or common point type
+          // Detect points: Look for common Niagara point types
           const isPoint = 
             type.includes('point') || 
             type.includes('writable') || 
@@ -131,7 +132,7 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
             type.includes('container') ||
             (Array.isArray(child.children) && child.children.length > 0);
           
-          // Skip massive system folders
+          // Skip system folders to save on requests
           if (ord.toLowerCase().includes('/services')) continue;
 
           if (isPoint) {
@@ -143,6 +144,7 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
       }
     } catch (e: any) {
       if (e.message === 'STATION_BUSY') return; 
+      // If the root path fails, we want to know, but sub-paths can fail silently
       if (depth === 0) throw e;
     }
   }
