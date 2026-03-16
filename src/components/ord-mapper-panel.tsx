@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Loader2, Copy, Filter, Globe, Zap, ShieldCheck, AlertCircle, Info } from 'lucide-react';
+import { Database, Loader2, Copy, Filter, Globe, Zap, ShieldCheck, AlertCircle, Info, Lock } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { discoverOrdsServer } from '@/app/actions/niagara';
@@ -38,7 +38,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
     const [stationUrl, setStationUrl] = useState('');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-    const [startPath, setStartPath] = useState('Config/Drivers');
+    const [startPath, setStartPath] = useState('Config');
     const [mapping, setMapping] = useState<PointMappingOutput | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isFetching, setIsFetching] = useState(false);
@@ -75,9 +75,14 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             let ords: string[] = [];
 
             if (isDirectMode) {
+                toast({ title: "CORS Warning", description: "Direct mode often fails due to browser security. Use Server Proxy instead.", variant: "destructive" });
                 const auth = btoa(`${username}:${password}`);
                 const baseUrl = stationUrl.endsWith('/') ? stationUrl.slice(0, -1) : stationUrl;
-                const url = `${baseUrl}/api/v1/read?ord=${encodeURIComponent(startPath)}`;
+                
+                let cleanPath = startPath;
+                if (!cleanPath.startsWith('slot:/')) cleanPath = `slot:/${cleanPath.replace(/^\/+/, '')}`;
+                
+                const url = `${baseUrl}/api/v1/read?ord=${encodeURIComponent(cleanPath)}`;
                 
                 const response = await fetch(url, {
                     method: 'GET',
@@ -87,13 +92,14 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     },
                 });
 
-                if (!response.ok) throw new Error(`Browser direct fetch failed: HTTP ${response.status}`);
+                if (!response.ok) {
+                    if (response.status === 401) throw new Error("AUTH_FAILED");
+                    throw new Error(`Browser fetch failed: ${response.status}`);
+                }
                 const data = await response.json();
                 
                 if (data && Array.isArray(data.children)) {
-                    ords = data.children
-                        .filter((c: any) => (c.type || '').toLowerCase().includes('point'))
-                        .map((c: any) => c.ord);
+                    ords = data.children.map((c: any) => c.ord);
                 }
             } else {
                 ords = await discoverOrdsServer(startPath, {
@@ -104,15 +110,19 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             }
 
             if (ords.length === 0) {
-                toast({ title: "No Points Found", description: "Discovery finished, but no points were found at this path.", variant: "default" });
+                setFetchError("Discovery finished but no points were found. Try a more specific path or check point types.");
             } else {
                 setRawOrds(ords.join('\n'));
                 toast({ title: "Discovery Complete", description: `Found ${ords.length} ORDs.` });
             }
         } catch (error: any) {
             console.error("Discovery Error:", error);
-            const msg = error.message === '503' ? "Station is busy. Try a deeper starting path to reduce load." : error.message;
-            setFetchError(msg || "Connection failed.");
+            let msg = error.message;
+            if (msg === 'AUTH_FAILED') msg = "Invalid Username or Password. Check credentials.";
+            if (msg === 'STATION_BUSY') msg = "Niagara station is busy (503). Try again in a minute.";
+            if (msg === 'TIMEOUT') msg = "Request timed out. The station is slow to respond.";
+            
+            setFetchError(msg || "Connection failed. Verify URL and network.");
             
             toast({ 
                 title: "Discovery Error", 
@@ -127,7 +137,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
     const handleProcess = () => {
         const ordArray = rawOrds.split('\n').map(s => s.trim()).filter(Boolean);
         if (ordArray.length === 0) {
-            toast({ title: "No ORDs provided", description: "Paste ORDs or use the Discovery tool.", variant: "destructive" });
+            toast({ title: "No ORDs", description: "Paste ORDs or use the Discovery tool.", variant: "destructive" });
             return;
         }
 
@@ -141,7 +151,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 const pointName = parts[parts.length - 1] || 'Unknown';
                 let roomName = 'Global/Unassigned';
                 
-                if (parts.length > 1) {
+                if (parts.length > 2) {
                     roomName = parts[parts.length - 2];
                 }
 
@@ -192,7 +202,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                             Connection Mode
                         </span>
                         <span className="text-xs font-medium">
-                            {isDirectMode ? "Direct (Browser)" : "Server Proxy (Local Node)"}
+                            {isDirectMode ? "Direct (Browser)" : "Server Proxy (Recommended)"}
                         </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -212,18 +222,9 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 {fetchError && (
                     <Alert variant="destructive" className="py-2 px-3 animate-in fade-in slide-in-from-top-1">
                         <AlertCircle className="h-4 w-4" />
-                        <AlertTitle className="text-xs">Connection Warning</AlertTitle>
+                        <AlertTitle className="text-xs">Discovery Result</AlertTitle>
                         <AlertDescription className="text-[10px] leading-tight">
                             {fetchError}
-                        </AlertDescription>
-                    </Alert>
-                )}
-
-                {!isDirectMode && (
-                    <Alert className="py-2 px-3 bg-primary/5 border-primary/20">
-                        <Info className="h-4 w-4 text-primary" />
-                        <AlertDescription className="text-[10px] text-muted-foreground">
-                            Using 500ms request delays to protect the station. Discovery will be slower but safer.
                         </AlertDescription>
                     </Alert>
                 )}
@@ -252,7 +253,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                         <div className="space-y-1.5">
                             <Label htmlFor="start-path">Discovery Root Path</Label>
                             <div className="flex gap-2">
-                                <Input id="start-path" value={startPath} onChange={(e) => setStartPath(e.target.value)} className="font-mono text-xs" />
+                                <Input id="start-path" value={startPath} onChange={(e) => setStartPath(e.target.value)} className="font-mono text-xs" placeholder="Config" />
                                 <Button variant="secondary" onClick={handleAutoDiscover} disabled={isFetching}>
                                     {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
                                 </Button>
