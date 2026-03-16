@@ -1,9 +1,9 @@
 'use server';
 
 /**
- * @fileOverview Server Actions for interacting with Niagara 4 REST API.
+ * @fileOverview Server Actions for interacting with Niagara 4.
  * 
- * These functions run on the server to bypass CORS and hide station credentials.
+ * Updated to use the /ord/ servlet path and station:|slot:/ prefix.
  */
 
 export type NiagaraCredentials = {
@@ -18,30 +18,35 @@ export type NiagaraCredentials = {
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * Proxies a read request to a Niagara station with a timeout.
+ * Proxies a read request to a Niagara station.
+ * Uses the /ord/ servlet format confirmed by the user.
  */
 export async function proxyFetchOrd(path: string, creds: NiagaraCredentials) {
   const auth = Buffer.from(`${creds.user}:${creds.pass}`).toString('base64');
-  // Ensure the URL is clean
   const baseUrl = creds.url.endsWith('/') ? creds.url.slice(0, -1) : creds.url;
   
-  // Clean path: ensure we handle slot:/ correctly
+  // Clean path: Ensure it uses the station:|slot:/ prefix required by the ORD servlet
   let cleanPath = path;
-  if (!cleanPath.startsWith('slot:/') && !cleanPath.startsWith('station:|slot:/')) {
-    cleanPath = `slot:/${cleanPath.replace(/^\/+/, '')}`;
+  if (!cleanPath.startsWith('station:|slot:/')) {
+    if (cleanPath.startsWith('slot:/')) {
+      cleanPath = `station:|${cleanPath}`;
+    } else {
+      cleanPath = `station:|slot:/${cleanPath.replace(/^\/+/, '')}`;
+    }
   }
 
-  const url = `${baseUrl}/api/v1/read?ord=${encodeURIComponent(cleanPath)}`;
+  // Use the /ord/ servlet path confirmed by the user
+  const url = `${baseUrl}/ord/${encodeURIComponent(cleanPath)}`;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
 
   try {
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Authorization': `Basic ${auth}`,
-        'Accept': 'application/json',
+        'Accept': 'application/json', // Request JSON data
       },
       next: { revalidate: 0 },
       signal: controller.signal
@@ -69,7 +74,8 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials) {
  */
 export async function testNiagaraConnection(creds: NiagaraCredentials) {
   try {
-    const data = await proxyFetchOrd('slot:/', creds);
+    // Try to read the station root
+    const data = await proxyFetchOrd('station:|slot:/', creds);
     return {
       success: true,
       stationName: data.name || data.stationName || "Niagara Station",
@@ -88,15 +94,15 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
   const foundOrds: Set<string> = new Set();
   const visitedPaths: Set<string> = new Set();
   let requestCount = 0;
-  const MAX_REQUESTS = 150; 
-  const MAX_DEPTH = 10;
+  const MAX_REQUESTS = 100; 
+  const MAX_DEPTH = 6;
 
   async function crawl(path: string, depth: number = 0) {
     if (depth > MAX_DEPTH || visitedPaths.has(path) || requestCount >= MAX_REQUESTS) return;
     visitedPaths.add(path);
     requestCount++;
 
-    // Politeness Delay: Slow down for the JACE
+    // Politeness Delay
     await sleep(500);
 
     try {
@@ -105,45 +111,39 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
       if (data && Array.isArray(data.children)) {
         for (const child of data.children) {
           const type = (child.type || '').toLowerCase();
+          const ord = child.ord || '';
           
-          // Broad Point Detection: Capture anything that looks like a point or value
+          // Detect points: Anything with a value, status, or common point type
           const isPoint = 
             type.includes('point') || 
             type.includes('writable') || 
             type.includes('proxy') ||
             type.includes('numeric') ||
             type.includes('boolean') ||
-            type.includes('enum') ||
-            type.includes('string') ||
             child.value !== undefined ||
             child.out !== undefined;
 
-          // Folder Detection: Capture containers
+          // Folders to explore
           const isFolder = 
             type.includes('folder') || 
             type.includes('device') || 
             type.includes('network') ||
-            type.includes('driver') ||
-            type.includes('service') ||
             type.includes('container') ||
             (Array.isArray(child.children) && child.children.length > 0);
           
-          // Skip the "Services" folder as it is usually massive and irrelevant
-          if (child.ord.toLowerCase().includes('/services')) continue;
+          // Skip massive system folders
+          if (ord.toLowerCase().includes('/services')) continue;
 
           if (isPoint) {
-            foundOrds.add(child.ord);
-          } else if (isFolder && depth < MAX_DEPTH && foundOrds.size < 300) {
-            await crawl(child.ord, depth + 1);
+            foundOrds.add(ord);
+          } else if (isFolder && depth < MAX_DEPTH && foundOrds.size < 200) {
+            await crawl(ord, depth + 1);
           }
         }
-      } else if (data && !Array.isArray(data.children)) {
-          // If we hit a single point directly
-          foundOrds.add(data.ord || path);
       }
     } catch (e: any) {
       if (e.message === 'STATION_BUSY') return; 
-      if (depth === 0) throw e; // Re-throw top-level errors (like 401)
+      if (depth === 0) throw e;
     }
   }
 
