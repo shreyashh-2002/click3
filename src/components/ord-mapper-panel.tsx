@@ -2,15 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Loader2, Copy, Filter, Globe, Zap, ShieldCheck, AlertCircle, Info, Lock, CheckCircle2, Network } from 'lucide-react';
+import { Database, Loader2, Filter, Globe, AlertCircle, CheckCircle2, Network } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { discoverOrdsServer, testNiagaraConnection } from '@/app/actions/niagara';
-import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type Point = {
@@ -75,17 +72,17 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 pass: password
             });
 
-            if (result.success) {
-                setConnectedStation(result.stationName);
+            if (result.success && result.data) {
+                setConnectedStation(result.data.stationName);
                 toast({ 
                     title: "Connection Success!", 
-                    description: `Successfully reached station: ${result.stationName}`,
+                    description: `Successfully reached station: ${result.data.stationName}`,
                 });
             } else {
                 setFetchError(result.error || "Connection failed.");
             }
         } catch (error: any) {
-            setFetchError("Server side error occurred. This usually happens when the local IP is unreachable from the cloud.");
+            setFetchError("Unexpected error occurred during test.");
         } finally {
             setIsTesting(false);
         }
@@ -104,20 +101,24 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
         saveCredentials();
 
         try {
-            const ords = await discoverOrdsServer(startPath, {
+            const result = await discoverOrdsServer(startPath, {
                 url: stationUrl,
                 user: username,
                 pass: password
             });
 
-            if (ords.length === 0) {
-                setFetchError("Discovery finished but no points were found. Ensure the path exists.");
+            if (result.success && result.data) {
+                if (result.data.length === 0) {
+                    setFetchError("Discovery finished but no points were found. Ensure the path exists.");
+                } else {
+                    setRawOrds(result.data.join('\n'));
+                    toast({ title: "Discovery Complete", description: `Found ${result.data.length} ORDs.` });
+                }
             } else {
-                setRawOrds(ords.join('\n'));
-                toast({ title: "Discovery Complete", description: `Found ${ords.length} ORDs.` });
+                setFetchError(result.error || "Discovery failed.");
             }
         } catch (error: any) {
-            setFetchError(error.message || "Discovery failed.");
+            setFetchError("Unexpected error occurred during discovery.");
         } finally {
             setIsFetching(false);
         }
@@ -183,7 +184,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     <Network className="h-4 w-4 text-blue-500" />
                     <AlertTitle className="text-xs font-bold text-blue-600 uppercase">Networking Note</AlertTitle>
                     <AlertDescription className="text-[10px] text-blue-700 leading-tight">
-                        The cloud server cannot see your private local IP (192.168.x.x). For this to work, you must run this project on your local machine using "npm run dev".
+                        Ensure you are using <strong>HTTPS</strong> and your station allows <strong>Basic Auth</strong> in WebService.
                     </AlertDescription>
                 </Alert>
 

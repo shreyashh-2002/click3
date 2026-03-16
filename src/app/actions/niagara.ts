@@ -3,11 +3,11 @@
 /**
  * @fileOverview Server Actions for interacting with Niagara 4.
  * 
- * Updated to handle SSL verification issues and provide 
- * better error feedback for networking constraints.
+ * Refactored to return result objects instead of throwing errors.
+ * This prevents 500 Internal Server Errors in the browser console.
  */
 
-// This allows the server to talk to JACEs with self-signed certificates.
+// Allow self-signed certificates common in JACEs
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 export type NiagaraCredentials = {
@@ -16,19 +16,22 @@ export type NiagaraCredentials = {
   pass: string;
 };
 
-/**
- * Helper to add a delay between requests to avoid overwhelming the JACE.
- */
+export type ServerActionResult<T> = {
+  success: boolean;
+  data?: T;
+  error?: string;
+};
+
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Proxies a read request to a Niagara station using the /ord/ servlet.
+ * Returns a result object instead of throwing.
  */
-export async function proxyFetchOrd(path: string, creds: NiagaraCredentials) {
+export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Promise<ServerActionResult<any>> {
   const auth = Buffer.from(`${creds.user}:${creds.pass}`).toString('base64');
   const baseUrl = creds.url.endsWith('/') ? creds.url.slice(0, -1) : creds.url;
   
-  // Clean path: Ensure it uses the station:|slot:/ prefix required by the ORD servlet
   let cleanPath = path;
   if (!cleanPath.startsWith('station:|slot:/')) {
     if (cleanPath.startsWith('slot:/')) {
@@ -39,7 +42,6 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials) {
   }
 
   const url = `${baseUrl}/ord/${cleanPath}`;
-
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -57,51 +59,50 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials) {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      if (response.status === 401) throw new Error("AUTH_FAILED");
-      if (response.status === 404) throw new Error(`NOT_FOUND: ${cleanPath}`);
-      if (response.status === 503) throw new Error("STATION_BUSY");
-      throw new Error(`STATION_ERROR_${response.status}`);
+      if (response.status === 401) return { success: false, error: "AUTH_FAILED: Check username and password." };
+      if (response.status === 404) return { success: false, error: `NOT_FOUND: ${cleanPath}` };
+      if (response.status === 503) return { success: false, error: "STATION_BUSY: Niagara is rejecting requests." };
+      return { success: false, error: `STATION_ERROR_${response.status}` };
     }
 
-    return await response.json();
+    const data = await response.json();
+    return { success: true, data };
   } catch (error: any) {
     clearTimeout(timeoutId);
     
-    // Better Error Surfacing
-    if (error.name === 'AbortError') throw new Error("TIMEOUT");
-    if (error.code === 'ECONNREFUSED') throw new Error("CONNECTION_REFUSED");
+    if (error.name === 'AbortError') return { success: false, error: "TIMEOUT: Station did not respond in time." };
+    if (error.code === 'ECONNREFUSED') return { success: false, error: "CONNECTION_REFUSED: IP is valid but station is not listening." };
     if (error.code === 'ENETUNREACH' || error.code === 'EHOSTUNREACH') {
-       throw new Error("NETWORK_UNREACHABLE: The server cannot find this IP. Local IPs (192.168.x.x) only work if the app is running locally.");
+       return { success: false, error: "NETWORK_UNREACHABLE: Check your network/VPN connection." };
     }
     
-    throw error;
+    return { success: false, error: error.message || "Unknown communication error." };
   }
 }
 
 /**
- * Verifies connectivity and returns station info using the /ord/ servlet.
+ * Verifies connectivity and returns station info.
  */
-export async function testNiagaraConnection(creds: NiagaraCredentials) {
-  try {
-    const data = await proxyFetchOrd('station:|slot:/', creds);
+export async function testNiagaraConnection(creds: NiagaraCredentials): Promise<ServerActionResult<{ stationName: string; type: string }>> {
+  const result = await proxyFetchOrd('station:|slot:/', creds);
+  
+  if (result.success) {
     return {
       success: true,
-      stationName: data.name || data.stationName || "Niagara Station",
-      type: data.type || "BStation"
-    };
-  } catch (error: any) {
-    console.error("Test Connection Error:", error.message);
-    return { 
-      success: false, 
-      error: error.message || "Unknown error connecting to station."
+      data: {
+        stationName: result.data.name || result.data.stationName || "Niagara Station",
+        type: result.data.type || "BStation"
+      }
     };
   }
+  
+  return { success: false, error: result.error };
 }
 
 /**
- * Server-side crawler to discover all ORDs using the /ord/ servlet.
+ * Server-side crawler to discover all ORDs.
  */
-export async function discoverOrdsServer(startPath: string, creds: NiagaraCredentials): Promise<string[]> {
+export async function discoverOrdsServer(startPath: string, creds: NiagaraCredentials): Promise<ServerActionResult<string[]>> {
   const foundOrds: Set<string> = new Set();
   const visitedPaths: Set<string> = new Set();
   let requestCount = 0;
@@ -113,50 +114,43 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
     visitedPaths.add(path);
     requestCount++;
 
-    await sleep(300);
+    const result = await proxyFetchOrd(path, creds);
+    
+    if (result.success && result.data && Array.isArray(result.data.children)) {
+      for (const child of result.data.children) {
+        const type = (child.type || '').toLowerCase();
+        const ord = child.ord || '';
+        
+        const isPoint = 
+          type.includes('point') || 
+          type.includes('writable') || 
+          type.includes('proxy') ||
+          type.includes('numeric') ||
+          type.includes('boolean') ||
+          child.value !== undefined ||
+          child.out !== undefined;
 
-    try {
-      const data = await proxyFetchOrd(path, creds);
-      
-      if (data && Array.isArray(data.children)) {
-        for (const child of data.children) {
-          const type = (child.type || '').toLowerCase();
-          const ord = child.ord || '';
-          
-          const isPoint = 
-            type.includes('point') || 
-            type.includes('writable') || 
-            type.includes('proxy') ||
-            type.includes('numeric') ||
-            type.includes('boolean') ||
-            child.value !== undefined ||
-            child.out !== undefined;
+        const isFolder = 
+          type.includes('folder') || 
+          type.includes('device') || 
+          type.includes('network') ||
+          type.includes('container');
+        
+        if (ord.toLowerCase().includes('/services')) continue;
 
-          const isFolder = 
-            type.includes('folder') || 
-            type.includes('device') || 
-            type.includes('network') ||
-            type.includes('container');
-          
-          if (ord.toLowerCase().includes('/services')) continue;
-
-          if (isPoint) {
-            foundOrds.add(ord);
-          } else if (isFolder && depth < MAX_DEPTH && foundOrds.size < 100) {
-            await crawl(ord, depth + 1);
-          }
+        if (isPoint) {
+          foundOrds.add(ord);
+        } else if (isFolder && depth < MAX_DEPTH && foundOrds.size < 100) {
+          await crawl(ord, depth + 1);
         }
       }
-    } catch (e: any) {
-      if (depth === 0) throw e;
+    } else if (!result.success && depth === 0) {
+      return result.error;
     }
   }
 
-  try {
-    await crawl(startPath);
-    return Array.from(foundOrds);
-  } catch (error: any) {
-    console.error("Discovery Error:", error.message);
-    throw error;
-  }
+  const initialCrawlError = await crawl(startPath);
+  if (initialCrawlError) return { success: false, error: initialCrawlError };
+  
+  return { success: true, data: Array.from(foundOrds) };
 }
