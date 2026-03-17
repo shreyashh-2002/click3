@@ -149,7 +149,9 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
   try {
     const baseUrl = creds.url.endsWith('/') ? creds.url.slice(0, -1) : creds.url;
     let cleanPath = path.startsWith('station:|slot:/') ? path : `station:|slot:/${path.replace(/^\/+/, '')}`;
-    const url = `${baseUrl}/ord/${cleanPath}`;
+    
+    // CRITICAL: Force JSON format via query parameter
+    const url = `${baseUrl}/ord/${cleanPath}?format=json`;
 
     // 1. Get Session Cookie
     let sessionCookie = '';
@@ -174,7 +176,7 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
     console.log(`[Niagara Response]: Status ${result.status}, Content-Type: ${contentType}`);
 
     if (result.status === 200) {
-      // Robust JSON detection: Check header OR look for JSON patterns in body
+      // Robust JSON detection
       const isJsonHeader = contentType.toLowerCase().includes('application/json');
       const bodyText = result.data.trim();
       const looksLikeJson = bodyText.startsWith('{') || bodyText.startsWith('[');
@@ -251,7 +253,8 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
     visitedPaths.add(path);
     requestCount++;
 
-    const url = `${baseUrl}/ord/${path}`;
+    // CRITICAL: Force JSON format via query parameter
+    const url = `${baseUrl}/ord/${path}?format=json`;
     
     try {
       const response = await performRequest(url, 'GET', { 
