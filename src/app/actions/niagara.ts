@@ -3,8 +3,7 @@
 /**
  * @fileOverview Server Actions for interacting with Niagara 4.
  * 
- * Refactored to return result objects instead of throwing errors.
- * This prevents 500 Internal Server Errors in the browser console.
+ * Refactored to provide deep diagnostics for network and security issues.
  */
 
 // Allow self-signed certificates common in JACEs
@@ -25,7 +24,6 @@ export type ServerActionResult<T> = {
 
 /**
  * Proxies a read request to a Niagara station using the /ord/ servlet.
- * Returns a result object instead of throwing.
  */
 export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Promise<ServerActionResult<any>> {
   const auth = Buffer.from(`${creds.user}:${creds.pass}`).toString('base64');
@@ -62,12 +60,18 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
         return { 
           success: false, 
           error: "AUTH_FAILED",
-          diagnostic: "Invalid credentials or 'Basic' Auth is disabled in the Niagara WebService."
+          diagnostic: "Niagara rejected your credentials. Ensure 'Basic Auth' is enabled and password is correct."
         };
       }
-      if (response.status === 404) return { success: false, error: `NOT_FOUND`, diagnostic: `The path '${cleanPath}' does not exist on the station.` };
-      if (response.status === 503) return { success: false, error: "STATION_BUSY", diagnostic: "The station is rejecting requests. Check CPU usage or WebService settings." };
-      return { success: false, error: `STATION_ERROR_${response.status}` };
+      if (response.status === 403) {
+        return {
+          success: false,
+          error: "CORS_OR_PERMISSION_DENIED",
+          diagnostic: "Access forbidden. Check 'Allowed Origins' (CORS) in the Niagara WebService or User Permissions."
+        };
+      }
+      if (response.status === 404) return { success: false, error: "NOT_FOUND", diagnostic: "The ORD path was not found on the station." };
+      return { success: false, error: `STATION_ERROR_${response.status}`, diagnostic: `The station returned an unexpected HTTP ${response.status} status.` };
     }
 
     const data = await response.json();
@@ -75,15 +79,15 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
   } catch (error: any) {
     clearTimeout(timeoutId);
     
-    // Categorize specific network failures
-    if (error.name === 'AbortError') return { success: false, error: "TIMEOUT", diagnostic: "The station did not respond within 10 seconds." };
-    if (error.code === 'ECONNREFUSED') return { success: false, error: "CONNECTION_REFUSED", diagnostic: "IP is valid, but the station rejected the connection (check the port)." };
-    if (error.code === 'ENOTFOUND' || error.code === 'EAI_AGAIN') return { success: false, error: "DNS_FAILED", diagnostic: "Could not find the station address. Check the URL spelling." };
-    if (error.code === 'ENETUNREACH' || error.code === 'EHOSTUNREACH') {
-       return { success: false, error: "NETWORK_UNREACHABLE", diagnostic: "Cannot reach the IP. Check your VPN or network connection." };
-    }
+    if (error.name === 'AbortError') return { success: false, error: "TIMEOUT", diagnostic: "The station took too long to respond (10s). Check your connection." };
     
-    return { success: false, error: "INTERNAL_ERROR", diagnostic: error.message || "Unknown communication error." };
+    // Check for local IP issues
+    const isLocalIp = baseUrl.includes('192.168.') || baseUrl.includes('10.') || baseUrl.includes('172.');
+    const diagnostic = isLocalIp 
+      ? "You are using a local IP. This cloud app cannot reach your private network. Use a public URL or run the app locally."
+      : error.message || "Unknown network error.";
+
+    return { success: false, error: "NETWORK_ERROR", diagnostic };
   }
 }
 
@@ -93,7 +97,6 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
 export async function testNiagaraConnection(creds: NiagaraCredentials): Promise<ServerActionResult<{ stationName: string; type: string }>> {
   try {
     const result = await proxyFetchOrd('station:|slot:/', creds);
-    
     if (result.success) {
       return {
         success: true,
@@ -103,10 +106,9 @@ export async function testNiagaraConnection(creds: NiagaraCredentials): Promise<
         }
       };
     }
-    
-    return { success: false, error: result.error, diagnostic: result.diagnostic };
+    return result;
   } catch (e: any) {
-    return { success: false, error: "CRASH", diagnostic: "Internal server crash during connection test." };
+    return { success: false, error: "CRASH", diagnostic: "The server action encountered an unhandled exception." };
   }
 }
 
@@ -137,15 +139,12 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
           type.includes('writable') || 
           type.includes('proxy') ||
           type.includes('numeric') ||
-          type.includes('boolean') ||
-          child.value !== undefined ||
-          child.out !== undefined;
+          type.includes('boolean');
 
         const isFolder = 
           type.includes('folder') || 
           type.includes('device') || 
-          type.includes('network') ||
-          type.includes('container');
+          type.includes('network');
         
         if (ord.toLowerCase().includes('/services')) continue;
 
@@ -163,9 +162,8 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
   try {
     const initialCrawlError = await crawl(startPath);
     if (initialCrawlError) return { success: false, error: "DISCOVERY_FAILED", diagnostic: initialCrawlError };
-    
     return { success: true, data: Array.from(foundOrds) };
   } catch (e: any) {
-    return { success: false, error: "CRITICAL_FAILURE", diagnostic: "Crawler crashed during execution." };
+    return { success: false, error: "CRITICAL_FAILURE", diagnostic: "Discovery engine crashed." };
   }
 }

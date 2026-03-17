@@ -5,10 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Loader2, Filter, Globe, AlertCircle, CheckCircle2, Network, ShieldAlert, Info } from 'lucide-react';
+import { Database, Loader2, Filter, Globe, Network, ShieldAlert, CheckCircle2, ShieldCheck, Info } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { discoverOrdsServer, testNiagaraConnection } from '@/app/actions/niagara';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 
 type Point = {
     ord: string;
@@ -24,10 +30,6 @@ type RoomMapping = {
 type PointMappingOutput = {
     rooms: RoomMapping[];
     generatedScriptPreview: string;
-};
-
-type OrdMapperPanelProps = {
-    initialPosition: { x: number; y: number };
 };
 
 export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps) {
@@ -57,213 +59,166 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
 
     const handleTestConnection = async () => {
         if (!stationUrl || !username || !password) {
-            toast({ title: "Missing Credentials", description: "Please enter Station URL, Username, and Password.", variant: "destructive" });
+            toast({ title: "Missing Credentials", description: "Enter all fields.", variant: "destructive" });
             return;
         }
-
         setIsTesting(true);
         setFetchError(null);
         setDiagnosticInfo(null);
         setConnectedStation(null);
         saveCredentials();
 
-        try {
-            const result = await testNiagaraConnection({
-                url: stationUrl,
-                user: username,
-                pass: password
-            });
-
-            if (result.success && result.data) {
-                setConnectedStation(result.data.stationName);
-                toast({ 
-                    title: "Connection Success!", 
-                    description: `Successfully reached station: ${result.data.stationName}`,
-                });
-            } else {
-                setFetchError(result.error || "Connection failed.");
-                setDiagnosticInfo(result.diagnostic || null);
-            }
-        } catch (error: any) {
-            setFetchError("Unexpected error occurred.");
-            setDiagnosticInfo("The client failed to execute the server action.");
-        } finally {
-            setIsTesting(false);
+        const result = await testNiagaraConnection({ url: stationUrl, user: username, pass: password });
+        if (result.success && result.data) {
+            setConnectedStation(result.data.stationName);
+            toast({ title: "Connected!", description: `Reached: ${result.data.stationName}` });
+        } else {
+            setFetchError(result.error || "Connection Failed");
+            setDiagnosticInfo(result.diagnostic || null);
         }
+        setIsTesting(false);
     };
 
     const handleAutoDiscover = async () => {
-        if (!stationUrl || !username || !password) {
-            toast({ title: "Missing Credentials", description: "Please enter Station URL, Username, and Password.", variant: "destructive" });
-            return;
-        }
-
+        if (!stationUrl || !username || !password) return;
         setIsFetching(true);
         setFetchError(null);
         setDiagnosticInfo(null);
-        setRawOrds('');
-        setMapping(null);
-        saveCredentials();
-
-        try {
-            const result = await discoverOrdsServer(startPath, {
-                url: stationUrl,
-                user: username,
-                pass: password
-            });
-
-            if (result.success && result.data) {
-                if (result.data.length === 0) {
-                    setFetchError("Discovery finished but no points were found.");
-                    setDiagnosticInfo("The path was reached, but no children were found. Check the 'Root Path'.");
-                } else {
-                    setRawOrds(result.data.join('\n'));
-                    toast({ title: "Discovery Complete", description: `Found ${result.data.length} ORDs.` });
-                }
-            } else {
-                setFetchError(result.error || "Discovery failed.");
-                setDiagnosticInfo(result.diagnostic || null);
-            }
-        } catch (error: any) {
-            setFetchError("Unexpected discovery failure.");
-        } finally {
-            setIsFetching(false);
+        const result = await discoverOrdsServer(startPath, { url: stationUrl, user: username, pass: password });
+        if (result.success && result.data) {
+            setRawOrds(result.data.join('\n'));
+            toast({ title: "Discovery Complete", description: `Found ${result.data.length} points.` });
+        } else {
+            setFetchError(result.error || "Discovery Failed");
+            setDiagnosticInfo(result.diagnostic || null);
         }
+        setIsFetching(false);
     };
-    
+
     const handleProcess = () => {
         const ordArray = rawOrds.split('\n').map(s => s.trim()).filter(Boolean);
-        if (ordArray.length === 0) {
-            toast({ title: "No ORDs", description: "Paste ORDs or use the Discovery tool.", variant: "destructive" });
-            return;
-        }
-
+        if (ordArray.length === 0) return;
         setIsLoading(true);
-        
         setTimeout(() => {
             const roomsMap: Record<string, Point[]> = {};
-
             ordArray.forEach(ord => {
                 const parts = ord.split('/');
-                const pointName = parts[parts.length - 1] || 'Unknown';
-                let roomName = 'Global/Unassigned';
-                
-                if (parts.length > 2) {
-                    roomName = parts[parts.length - 2];
-                }
-
-                const categorizePoint = (name: string): Point['category'] => {
-                    const n = name.toLowerCase();
-                    if (n.includes('temp')) return 'Temperature';
-                    if (n.includes('set') || n.includes('sp')) return 'Setpoint';
-                    if (n.includes('hum')) return 'Humidity';
-                    if (n.includes('occ')) return 'Occupancy';
-                    if (n.includes('stat')) return 'Status';
-                    if (n.includes('cmd')) return 'Command';
+                const pointName = parts[parts.length - 1] || 'Point';
+                let roomName = parts.length > 2 ? parts[parts.length - 2] : 'Global';
+                const categorize = (n: string): Point['category'] => {
+                    const l = n.toLowerCase();
+                    if (l.includes('temp')) return 'Temperature';
+                    if (l.includes('set')) return 'Setpoint';
+                    if (l.includes('hum')) return 'Humidity';
+                    if (l.includes('occ')) return 'Occupancy';
+                    if (l.includes('stat')) return 'Status';
+                    if (l.includes('cmd')) return 'Command';
                     return 'Other';
                 };
-
-                const label = pointName.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim();
-                const point: Point = { ord, category: categorizePoint(pointName), label };
-
+                const point: Point = { ord, category: categorize(pointName), label: pointName.replace(/_/g, ' ') };
                 if (!roomsMap[roomName]) roomsMap[roomName] = [];
                 roomsMap[roomName].push(point);
             });
-
-            const rooms: RoomMapping[] = Object.entries(roomsMap).map(([roomName, points]) => ({ roomName, points }));
-            const scriptPreview = `/**\n * Auto-generated Niagara Script\n */\n${rooms.map(r => `// ${r.roomName}\n` + r.points.map(p => `BStatusNumeric ${p.label.replace(/\s+/g, '')} = (BStatusNumeric) BOrd.make("${p.ord}").get();`).join('\n')).join('\n\n')}`;
-            setMapping({ rooms, generatedScriptPreview: scriptPreview });
+            setMapping({ rooms: Object.entries(roomsMap).map(([roomName, points]) => ({ roomName, points })), generatedScriptPreview: '' });
             setIsLoading(false);
-        }, 300);
+        }, 500);
     };
 
     return (
         <DraggablePanel
             id="ord-mapper-panel"
-            title="ORD Mapper"
+            title="Niagara Connectivity"
             icon={<Database className="h-5 w-5 text-primary" />}
-            description="Bridge Niagara station data into your 3D view."
+            description="Manage your Niagara 4 data bridge."
             initialPosition={initialPosition}
             className="w-[450px]"
         >
             <div className="space-y-4">
-                <Alert className="bg-blue-500/5 border-blue-500/20 py-2 px-3">
-                    <Network className="h-4 w-4 text-blue-500" />
-                    <AlertTitle className="text-xs font-bold text-blue-600 uppercase">Networking Note</AlertTitle>
-                    <AlertDescription className="text-[10px] text-blue-700 leading-tight">
-                        Cloud servers cannot see local IPs (192.168.x.x). For this to work, you must use a public URL or run the app locally.
-                    </AlertDescription>
-                </Alert>
+                <Accordion type="single" collapsible className="w-full">
+                    <AccordionItem value="security-checklist" className="border-none">
+                        <AccordionTrigger className="py-2 hover:no-underline">
+                            <div className="flex items-center gap-2 text-xs font-bold text-amber-500">
+                                <ShieldCheck className="h-4 w-4" />
+                                NIAGARA SECURITY CHECKLIST
+                            </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="bg-amber-500/5 rounded-md p-3 space-y-2 border border-amber-500/20">
+                            <ul className="text-[10px] space-y-1 text-amber-700 list-disc pl-4">
+                                <li><strong>WebService:</strong> Set 'Https Only' to true and check 'Basic Auth'.</li>
+                                <li><strong>CORS:</strong> Add this app's URL to 'Allowed Origins' in WebService.</li>
+                                <li><strong>Network:</strong> Local IPs (192.168.x.x) only work if the app is running locally.</li>
+                                <li><strong>Permissions:</strong> Ensure the user has 'Read' and 'Invoke' roles.</li>
+                            </ul>
+                        </AccordionContent>
+                    </AccordionItem>
+                </Accordion>
 
                 {connectedStation && (
                     <Alert className="bg-green-500/10 border-green-500/20 py-2 px-3">
                         <CheckCircle2 className="h-4 w-4 text-green-500" />
-                        <AlertTitle className="text-xs font-bold text-green-600">Connected</AlertTitle>
-                        <AlertDescription className="text-[10px] text-green-700">
-                            Verified connection to: <strong>{connectedStation}</strong>
-                        </AlertDescription>
+                        <AlertTitle className="text-xs font-bold text-green-600">CONNECTED</AlertTitle>
+                        <AlertDescription className="text-[10px] text-green-700">Verified reach to: <strong>{connectedStation}</strong></AlertDescription>
                     </Alert>
                 )}
 
                 {fetchError && (
-                    <Alert variant="destructive" className="py-2 px-3 border-destructive/50">
+                    <Alert variant="destructive" className="py-2 px-3">
                         <ShieldAlert className="h-4 w-4" />
                         <AlertTitle className="text-xs font-bold uppercase">{fetchError}</AlertTitle>
-                        <AlertDescription className="text-[10px] leading-tight mt-1">
-                            {diagnosticInfo || "Check credentials and WebService settings."}
-                        </AlertDescription>
+                        <AlertDescription className="text-[10px] mt-1">{diagnosticInfo}</AlertDescription>
                     </Alert>
                 )}
 
-                <div className="space-y-3 pt-2">
-                    <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1.5">
-                            <Label htmlFor="niagara-user">Username</Label>
-                            <Input id="niagara-user" value={username} onChange={(e) => setUsername(e.target.value)} onBlur={saveCredentials} />
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label htmlFor="niagara-pass">Password</Label>
-                            <Input id="niagara-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-                        </div>
+                <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                        <Label className="text-[10px] uppercase text-muted-foreground">User</Label>
+                        <Input value={username} onChange={(e) => setUsername(e.target.value)} onBlur={saveCredentials} className="h-8 text-xs" />
                     </div>
-                    <div className="space-y-1.5">
-                        <Label htmlFor="niagara-url">Station URL (HTTPS)</Label>
-                        <div className="flex gap-2">
-                            <Input id="niagara-url" value={stationUrl} onChange={(e) => setStationUrl(e.target.value)} placeholder="https://jace-public-url.com" onBlur={saveCredentials} />
-                            <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={isTesting}>
-                                {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Test"}
-                            </Button>
-                        </div>
-                    </div>
-                    <div className="space-y-1.5">
-                        <Label htmlFor="start-path">Root Path</Label>
-                        <div className="flex gap-2">
-                            <Input id="start-path" value={startPath} onChange={(e) => setStartPath(e.target.value)} className="font-mono text-xs" placeholder="Config" />
-                            <Button variant="secondary" onClick={handleAutoDiscover} disabled={isFetching}>
-                                {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
-                            </Button>
-                        </div>
+                    <div className="space-y-1">
+                        <Label className="text-[10px] uppercase text-muted-foreground">Pass</Label>
+                        <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="h-8 text-xs" />
                     </div>
                 </div>
 
-                <Button onClick={handleProcess} disabled={isLoading || !rawOrds} className="w-full shadow-lg">
-                    {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Filter className="mr-2 h-4 w-4" />}
-                    Map & Group Points
+                <div className="space-y-1">
+                    <Label className="text-[10px] uppercase text-muted-foreground">Station URL (HTTPS)</Label>
+                    <div className="flex gap-2">
+                        <Input value={stationUrl} onChange={(e) => setStationUrl(e.target.value)} placeholder="https://192.168.1.225" className="h-8 text-xs flex-1" />
+                        <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={isTesting} className="h-8">
+                            {isTesting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Test"}
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="space-y-1">
+                    <Label className="text-[10px] uppercase text-muted-foreground">Root Path</Label>
+                    <div className="flex gap-2">
+                        <Input value={startPath} onChange={(e) => setStartPath(e.target.value)} className="h-8 text-xs font-mono flex-1" />
+                        <Button variant="secondary" size="sm" onClick={handleAutoDiscover} disabled={isFetching} className="h-8">
+                            {isFetching ? <Loader2 className="h-3 w-3 animate-spin" /> : <Globe className="h-3 w-3 mr-1" />}
+                            Discover
+                        </Button>
+                    </div>
+                </div>
+
+                <Button onClick={handleProcess} disabled={isLoading || !rawOrds} className="w-full h-9 shadow-md">
+                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Filter className="h-4 w-4 mr-2" />}
+                    Map Points
                 </Button>
 
                 {mapping && (
-                    <div className="mt-4 space-y-4 max-h-80 overflow-auto pr-2">
+                    <div className="mt-2 max-h-48 overflow-auto space-y-2 pr-1 border-t pt-2">
                         {mapping.rooms.map((room, idx) => (
-                            <div key={idx} className="border rounded-md p-3 bg-muted/30">
-                                <h4 className="font-bold text-sm text-primary mb-2">{room.roomName}</h4>
-                                <ul className="space-y-1">
+                            <div key={idx} className="bg-muted/40 p-2 rounded border border-border/50">
+                                <p className="text-[10px] font-bold text-primary mb-1 uppercase tracking-tighter">{room.roomName}</p>
+                                <div className="space-y-0.5">
                                     {room.points.map((p, pIdx) => (
-                                        <li key={pIdx} className="text-[11px] flex justify-between">
-                                            <span>{p.label}</span>
-                                            <span className="text-[8px] uppercase px-1 rounded bg-primary/10 text-primary">{p.category}</span>
-                                        </li>
+                                        <div key={pIdx} className="flex justify-between items-center text-[9px] hover:bg-primary/5 p-0.5 rounded transition-colors">
+                                            <span className="truncate max-w-[150px]">{p.label}</span>
+                                            <span className="bg-primary/10 text-primary px-1 rounded-sm uppercase font-bold text-[7px]">{p.category}</span>
+                                        </div>
                                     ))}
-                                </ul>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -271,4 +226,8 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             </div>
         </DraggablePanel>
     );
+}
+
+interface OrdMapperPanelProps {
+    initialPosition: { x: number; y: number };
 }
