@@ -4,7 +4,7 @@
  * @fileOverview Server Actions for interacting with Niagara 4.
  * 
  * Exclusively uses Session-based (Cookie) Authentication.
- * 1. POSTs to /login with j_username/j_password.
+ * 1. POSTs to /j_security_check with j_username/j_password.
  * 2. Follows the 302 Redirect to 'activate' the session.
  * 3. Captures all 'Set-Cookie' headers.
  * 4. Uses the full cookie string and CSRF headers (Referer/Origin) for subsequent requests.
@@ -70,11 +70,12 @@ async function performRequest(
 
 /**
  * Logs into Niagara and returns the fully activated session cookie.
- * Follows the 302 redirect to ensure the session is marked as 'active' by the JACE.
+ * Uses /j_security_check which is more reliable for programmatic auth in Niagara.
  */
 async function loginToNiagara(creds: NiagaraCredentials): Promise<string> {
   const baseUrl = creds.url.endsWith('/') ? creds.url.slice(0, -1) : creds.url;
-  const loginUrl = `${baseUrl}/login`;
+  // Use j_security_check instead of /login
+  const loginUrl = `${baseUrl}/j_security_check`;
   
   const postData = querystring.stringify({
     'j_username': creds.user,
@@ -83,46 +84,53 @@ async function loginToNiagara(creds: NiagaraCredentials): Promise<string> {
 
   console.log(`[Niagara Auth]: 1. Attempting POST to ${loginUrl}`);
 
-  // Step 1: POST credentials
+  // Step 1: POST credentials to the security check
   const response = await performRequest(loginUrl, 'POST', {
     'Content-Type': 'application/x-www-form-urlencoded',
     'Content-Length': Buffer.byteLength(postData).toString(),
-    'Referer': baseUrl + '/',
+    'Referer': baseUrl + '/login',
     'Origin': baseUrl
   }, postData);
 
   let cookies = response.headers['set-cookie'] || [];
+  console.log(`[Niagara Auth Debug]: POST Status: ${response.status}`);
   
   if (response.status === 302 || response.status === 200) {
-    // Step 2: Follow the redirect to activate the session
+    // Step 2: Follow the redirect (if any) to activate the session
     const redirectPath = response.headers['location'];
     if (redirectPath) {
       const redirectUrl = redirectPath.startsWith('http') ? redirectPath : `${baseUrl}${redirectPath}`;
-      const cookieStr = Array.isArray(cookies) ? cookies.map(c => c.split(';')[0]).join('; ') : '';
+      const currentCookies = Array.isArray(cookies) ? cookies.map(c => c.split(';')[0]).join('; ') : '';
       
-      console.log(`[Niagara Auth]: 2. Following redirect to ${redirectUrl} to activate session...`);
+      console.log(`[Niagara Auth]: 2. Following redirect to ${redirectUrl}...`);
       
       const followRes = await performRequest(redirectUrl, 'GET', {
-        'Cookie': cookieStr,
-        'Referer': baseUrl + '/',
+        'Cookie': currentCookies,
+        'Referer': baseUrl + '/login',
         'Origin': baseUrl
       });
 
-      // Capture any additional cookies from the redirect (like niagara_session)
+      // Capture any additional cookies from the redirect (like JSESSIONID)
       if (followRes.headers['set-cookie']) {
         const newCookies = followRes.headers['set-cookie'];
         cookies = [...(Array.isArray(cookies) ? cookies : [cookies]), ...(Array.isArray(newCookies) ? newCookies : [newCookies])];
       }
       
-      console.log(`[Niagara Auth]: 3. Session activated. Status: ${followRes.status}`);
+      console.log(`[Niagara Auth]: 3. Session response status: ${followRes.status}`);
     }
 
     // Prepare final cookie string for future requests
+    // We unique them to avoid duplicates like two JSESSIONIDs
     const finalCookieStr = Array.from(new Set(
       (Array.isArray(cookies) ? cookies : [cookies]).map(c => c.split(';')[0])
     )).join('; ');
 
     console.log("[Niagara Auth Debug] FINAL CONSOLIDATED COOKIES:", finalCookieStr);
+
+    if (!finalCookieStr.includes('JSESSIONID')) {
+      console.warn("[Niagara Auth Warning]: No JSESSIONID found in response cookies!");
+    }
+
     return finalCookieStr;
   }
 
