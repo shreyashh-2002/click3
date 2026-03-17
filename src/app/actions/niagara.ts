@@ -22,8 +22,6 @@ export type ServerActionResult<T> = {
   error?: string;
 };
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 /**
  * Proxies a read request to a Niagara station using the /ord/ servlet.
  * Returns a result object instead of throwing.
@@ -59,7 +57,12 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      if (response.status === 401) return { success: false, error: "AUTH_FAILED: Check username and password." };
+      if (response.status === 401) {
+        return { 
+          success: false, 
+          error: "AUTH_FAILED: Invalid credentials or Basic Auth is disabled in WebService." 
+        };
+      }
       if (response.status === 404) return { success: false, error: `NOT_FOUND: ${cleanPath}` };
       if (response.status === 503) return { success: false, error: "STATION_BUSY: Niagara is rejecting requests." };
       return { success: false, error: `STATION_ERROR_${response.status}` };
@@ -84,19 +87,23 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
  * Verifies connectivity and returns station info.
  */
 export async function testNiagaraConnection(creds: NiagaraCredentials): Promise<ServerActionResult<{ stationName: string; type: string }>> {
-  const result = await proxyFetchOrd('station:|slot:/', creds);
-  
-  if (result.success) {
-    return {
-      success: true,
-      data: {
-        stationName: result.data.name || result.data.stationName || "Niagara Station",
-        type: result.data.type || "BStation"
-      }
-    };
+  try {
+    const result = await proxyFetchOrd('station:|slot:/', creds);
+    
+    if (result.success) {
+      return {
+        success: true,
+        data: {
+          stationName: result.data.name || result.data.stationName || "Niagara Station",
+          type: result.data.type || "BStation"
+        }
+      };
+    }
+    
+    return { success: false, error: result.error };
+  } catch (e: any) {
+    return { success: false, error: "Internal test failure." };
   }
-  
-  return { success: false, error: result.error };
 }
 
 /**
@@ -109,7 +116,7 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
   const MAX_REQUESTS = 50; 
   const MAX_DEPTH = 5;
 
-  async function crawl(path: string, depth: number = 0) {
+  async function crawl(path: string, depth: number = 0): Promise<string | void> {
     if (depth > MAX_DEPTH || visitedPaths.has(path) || requestCount >= MAX_REQUESTS) return;
     visitedPaths.add(path);
     requestCount++;
@@ -149,8 +156,12 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
     }
   }
 
-  const initialCrawlError = await crawl(startPath);
-  if (initialCrawlError) return { success: false, error: initialCrawlError };
-  
-  return { success: true, data: Array.from(foundOrds) };
+  try {
+    const initialCrawlError = await crawl(startPath);
+    if (initialCrawlError) return { success: false, error: initialCrawlError };
+    
+    return { success: true, data: Array.from(foundOrds) };
+  } catch (e: any) {
+    return { success: false, error: "Critical discovery failure." };
+  }
 }
