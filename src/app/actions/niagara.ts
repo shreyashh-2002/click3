@@ -3,7 +3,7 @@
 /**
  * @fileOverview Server Actions for interacting with Niagara 4.
  * 
- * Supports both Basic and Digest Authentication schemes.
+ * Exclusively uses Digest Authentication for secure communication.
  * Includes verbose server-side logging for local debugging.
  */
 
@@ -73,7 +73,9 @@ function calculateDigestResponse(
 }
 
 /**
- * Performs a request to a Niagara station, handling Digest handshake if needed.
+ * Performs a request to a Niagara station using Digest Authentication.
+ * 1. Probes with no auth to trigger challenge.
+ * 2. Handshakes with Digest response.
  */
 async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader?: string): Promise<any> {
   const parsedUrl = new URL(url);
@@ -92,12 +94,9 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
 
   if (authHeader) {
     options.headers!['Authorization'] = authHeader;
-  } else {
-    const basic = Buffer.from(`${creds.user}:${creds.pass}`).toString('base64');
-    options.headers!['Authorization'] = `Basic ${basic}`;
   }
 
-  console.log(`[Niagara Request]: ${options.method} ${url} (Auth: ${authHeader ? 'Digest' : 'Basic'})`);
+  console.log(`[Niagara Request]: ${options.method} ${url} (Auth: ${authHeader ? 'Digest' : 'None/Probe'})`);
 
   return new Promise((resolve, reject) => {
     const req = https.get(options, (res) => {
@@ -107,15 +106,16 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
         const wwwAuth = (res.headers['www-authenticate'] as string) || '';
         console.log(`[Niagara Response]: Status ${res.statusCode} from ${parsedUrl.hostname}`);
 
-        if (res.statusCode === 401) {
-          console.log(`[Niagara Debug]: All Response Headers:`, JSON.stringify(res.headers, null, 2));
+        // If we hit 401 and haven't tried Digest yet, start the handshake
+        if (res.statusCode === 401 && !authHeader) {
+          console.log(`[Niagara Debug]: Challenge received. Header: "${wwwAuth}"`);
           
-          if (wwwAuth.toLowerCase().includes('digest') && !authHeader) {
-            console.log(`[Niagara Auth]: Station requested Digest handshake.`);
+          if (wwwAuth.toLowerCase().includes('digest')) {
             const params = parseDigestHeader(wwwAuth);
             const nc = '00000001';
             const cnonce = crypto.randomBytes(8).toString('hex');
             const responseHash = calculateDigestResponse('GET', options.path!, creds, params, nc, cnonce);
+            
             let digestHeader = `Digest username="${creds.user}", realm="${params.realm}", nonce="${params.nonce}", uri="${options.path}", response="${responseHash}"`;
             if (params.qop) digestHeader += `, qop=${params.qop.split(',')[0].trim()}, nc=${nc}, cnonce="${cnonce}"`;
             if (params.opaque) digestHeader += `, opaque="${params.opaque}"`;
@@ -129,10 +129,17 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
             return;
           }
 
-          console.error(`[Niagara Auth Error]: Rejected credentials for ${creds.user}`);
+          return reject({ 
+            error: "DIGEST_NOT_SUPPORTED", 
+            diagnostic: `Station returned 401 but no Digest challenge. Found: "${wwwAuth || 'EMPTY'}". Ensure Digest is enabled in WebService.` 
+          });
+        }
+
+        if (res.statusCode === 401 && authHeader) {
+          console.error(`[Niagara Auth Error]: Digest rejected for user: ${creds.user}`);
           return reject({ 
             error: "AUTH_FAILED", 
-            diagnostic: `Niagara rejected credentials. WWW-Authenticate: "${wwwAuth || 'EMPTY'}". Check if Basic/Digest is enabled and the user is not locked.` 
+            diagnostic: "Digest credentials rejected. Check password and user permissions in Niagara." 
           });
         }
 
@@ -157,8 +164,15 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
       });
     });
 
-    req.on('error', (e: any) => reject({ error: "NETWORK_ERROR", diagnostic: e.message }));
-    req.on('timeout', () => { req.destroy(); reject({ error: "TIMEOUT", diagnostic: "Request timed out." }); });
+    req.on('error', (e: any) => {
+      console.error("[Niagara Network Error]:", e.message);
+      reject({ error: "NETWORK_ERROR", diagnostic: e.message });
+    });
+    
+    req.on('timeout', () => { 
+      req.destroy(); 
+      reject({ error: "TIMEOUT", diagnostic: "Request timed out." }); 
+    });
   });
 }
 
@@ -191,6 +205,7 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
   const foundOrds: Set<string> = new Set();
   const visitedPaths: Set<string> = new Set();
   let requestCount = 0;
+  
   async function crawl(path: string, depth: number = 0) {
     if (depth > 2 || visitedPaths.has(path) || requestCount >= 30) return;
     visitedPaths.add(path);
@@ -208,6 +223,7 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
       }
     }
   }
+  
   try {
     await crawl(startPath);
     return { success: true, data: Array.from(foundOrds) };
