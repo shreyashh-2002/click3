@@ -29,6 +29,7 @@ export type ServerActionResult<T> = {
 function parseDigestHeader(header: string): Record<string, string> {
   const params: Record<string, string> = {};
   try {
+    if (!header) return params;
     // Match key="value" or key=value
     const parts = header.substring(7).split(/,\s*(?=(?:[^"]|"[^"]*")*$)/);
     parts.forEach(part => {
@@ -107,8 +108,9 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', async () => {
         // 1. Handle Digest Challenge
-        if (res.statusCode === 401 && res.headers['www-authenticate']?.toLowerCase().includes('digest') && !authHeader) {
-          const params = parseDigestHeader(res.headers['www-authenticate']);
+        const wwwAuth = res.headers['www-authenticate'] || '';
+        if (res.statusCode === 401 && wwwAuth.toLowerCase().includes('digest') && !authHeader) {
+          const params = parseDigestHeader(wwwAuth);
           const nc = '00000001';
           const cnonce = crypto.randomBytes(8).toString('hex');
           const qop = params.qop?.split(',')[0].trim();
@@ -215,7 +217,8 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
     const data = await niagaraRequest(url, creds);
     return { success: true, data };
   } catch (err: any) {
-    // Ensure we ALWAYS return a standard object to prevent 500 errors
+    // Log to server terminal for local debugging
+    console.error("[Niagara Proxy Error]:", err);
     return { 
       success: false, 
       error: err.error || "CRITICAL_CRASH", 
@@ -241,6 +244,7 @@ export async function testNiagaraConnection(creds: NiagaraCredentials): Promise<
     }
     return result;
   } catch (e) {
+    console.error("[Niagara Test Crash]:", e);
     return { success: false, error: "ACTION_FAILED", diagnostic: "Test connection crashed internally." };
   }
 }
@@ -294,6 +298,7 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
     await crawl(startPath);
     return { success: true, data: Array.from(foundOrds) };
   } catch (e: any) {
+    console.error("[Niagara Discovery Crash]:", e);
     return { success: false, error: "CRITICAL_FAILURE", diagnostic: "Discovery engine failed during crawl." };
   }
 }
