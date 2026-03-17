@@ -30,8 +30,14 @@ function parseDigestHeader(header: string): Record<string, string> {
   const params: Record<string, string> = {};
   try {
     if (!header) return params;
-    // Match key="value" or key=value
-    const parts = header.substring(7).split(/,\s*(?=(?:[^"]|"[^"]*")*$)/);
+    
+    // Find where "Digest " starts
+    const digestStart = header.indexOf('Digest ');
+    if (digestStart === -1) return params;
+
+    const challenge = header.substring(digestStart + 7);
+    const parts = challenge.split(/,\s*(?=(?:[^"]|"[^"]*")*$)/);
+    
     parts.forEach(part => {
       const [key, ...valParts] = part.split('=');
       const value = valParts.join('=');
@@ -108,13 +114,19 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', async () => {
+        const wwwAuth = (res.headers['www-authenticate'] as string) || '';
         console.log(`[Niagara Response]: Status ${res.statusCode} from ${parsedUrl.hostname}`);
 
         // 1. Handle Digest Challenge
-        const wwwAuth = res.headers['www-authenticate'] || '';
         if (res.statusCode === 401 && wwwAuth.toLowerCase().includes('digest') && !authHeader) {
           console.log(`[Niagara Auth]: Station requested Digest handshake.`);
           const params = parseDigestHeader(wwwAuth);
+          
+          if (!params.nonce || !params.realm) {
+             console.error(`[Niagara Auth Error]: Digest challenge missing realm or nonce.`);
+             return reject({ error: "AUTH_FAILED", diagnostic: "Invalid Digest challenge from Niagara." });
+          }
+
           const nc = '00000001';
           const cnonce = crypto.randomBytes(8).toString('hex');
           const qop = params.qop?.split(',')[0].trim();
@@ -142,9 +154,10 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
         // 2. Handle Authentication Failure
         if (res.statusCode === 401) {
           console.error(`[Niagara Auth Error]: Rejected credentials for ${creds.user}`);
+          console.error(`[Niagara Debug]: WWW-Authenticate Header: "${wwwAuth}"`);
           return reject({ 
             error: "AUTH_FAILED", 
-            diagnostic: "Niagara rejected credentials. Ensure 'Digest' or 'Basic' is enabled in WebService and the user has correct permissions." 
+            diagnostic: `Niagara rejected credentials. Station requested: ${wwwAuth || 'No scheme specified'}` 
           });
         }
         
@@ -152,7 +165,7 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
         if (res.statusCode === 403) {
           return reject({ 
             error: "FORBIDDEN", 
-            diagnostic: "Access denied. Check if the user has 'Read' permissions on the station and if CORS allows this origin." 
+            diagnostic: "Access denied. Check if the user has 'Read' permissions on the station." 
           });
         }
 
@@ -162,7 +175,7 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
           console.warn(`[Niagara Data Warning]: Station returned HTML instead of JSON. Check the ORD path.`);
           return reject({
             error: "HTML_RESPONSE",
-            diagnostic: "Station returned a web page (likely a login page) instead of data. Verify the ORD path exists."
+            diagnostic: "Station returned a web page (likely a login page) instead of data."
           });
         }
         
@@ -190,7 +203,7 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
       console.error(`[Niagara Network Error]: ${e.message}`);
       reject({ 
         error: "NETWORK_ERROR", 
-        diagnostic: `Connection failed: ${e.message}. Is the IP ${parsedUrl.hostname} reachable from this PC?` 
+        diagnostic: `Connection failed: ${e.message}` 
       });
     });
 
@@ -199,7 +212,7 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
       console.error(`[Niagara Timeout]: Station took too long to respond.`);
       reject({ 
         error: "TIMEOUT", 
-        diagnostic: "Connection timed out. Niagara is taking too long to respond." 
+        diagnostic: "Connection timed out." 
       });
     });
   });
@@ -230,7 +243,7 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
     return { 
       success: false, 
       error: err.error || "SERVER_CRASH", 
-      diagnostic: err.diagnostic || "An unexpected error occurred in the Niagara data bridge." 
+      diagnostic: err.diagnostic || "An unexpected error occurred." 
     };
   }
 }
