@@ -164,7 +164,7 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
     console.log(`[Niagara Request]: GET ${url}`);
     const result = await performRequest(url, 'GET', {
       'Cookie': sessionCookie,
-      'Accept': 'application/json, text/plain, */*',
+      'Accept': 'application/json', // Strictly request JSON
       'X-Niagara-Accept': 'application/json', // Force JSON on strict JACEs
       'Referer': baseUrl + '/',
       'Origin': baseUrl
@@ -174,8 +174,12 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
     console.log(`[Niagara Response]: Status ${result.status}, Content-Type: ${contentType}`);
 
     if (result.status === 200) {
-      // Check if we actually got JSON
-      if (contentType.toLowerCase().includes('application/json') || result.data.trim().startsWith('{') || result.data.trim().startsWith('[')) {
+      // Robust JSON detection: Check header OR look for JSON patterns in body
+      const isJsonHeader = contentType.toLowerCase().includes('application/json');
+      const bodyText = result.data.trim();
+      const looksLikeJson = bodyText.startsWith('{') || bodyText.startsWith('[');
+
+      if (isJsonHeader || looksLikeJson) {
         try {
           const json = JSON.parse(result.data);
           return { success: true, data: json };
@@ -189,7 +193,7 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
         return { 
           success: false, 
           error: "PARSE_ERROR", 
-          diagnostic: "Station returned HTML instead of JSON. Ensure 'JSON' is an allowed Media Type in the Niagara WebService."
+          diagnostic: "Station returned HTML instead of JSON. Ensure 'JSON' is an allowed Media Type in the Niagara WebService for the user/profile."
         };
       }
     }
@@ -259,7 +263,7 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
       });
       
       const contentType = response.headers['content-type'] || '';
-      if (response.status === 200 && contentType.toLowerCase().includes('json')) {
+      if (response.status === 200 && (contentType.toLowerCase().includes('json') || response.data.trim().startsWith('{'))) {
         const data = JSON.parse(response.data);
         if (data && Array.isArray(data.children)) {
           for (const child of data.children) {
