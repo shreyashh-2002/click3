@@ -3,10 +3,9 @@
 /**
  * @fileOverview Server Actions for interacting with Niagara 4.
  * 
- * Exclusively uses Session-based (Cookie) Authentication.
- * 1. GET /login - Establish initial session context and capture cookies.
- * 2. POST /j_security_check - Submit j_username/j_password using initial cookies.
- * 3. Follow Success Redirect - Activate the session.
+ * Supports two modes:
+ * 1. Manual Cookie Override: Bypasses login logic using a browser-captured JSESSIONID.
+ * 2. Automated Stateful Auth: GET /login -> POST /j_security_check -> Follow Redirect.
  */
 
 import https from 'https';
@@ -16,6 +15,7 @@ export type NiagaraCredentials = {
   url: string;
   user: string;
   pass: string;
+  manualCookie?: string; // Optional browser-captured cookie bypass
 };
 
 export type ServerActionResult<T> = {
@@ -161,8 +161,14 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
     let cleanPath = path.startsWith('station:|slot:/') ? path : `station:|slot:/${path.replace(/^\/+/, '')}`;
     const url = `${baseUrl}/ord/${cleanPath}`;
 
-    // 1. Get Activated Session Cookie using the 3-step handshake
-    const sessionCookie = await loginToNiagara(creds);
+    // 1. Get Activated Session Cookie
+    let sessionCookie = '';
+    if (creds.manualCookie && creds.manualCookie.trim() !== '') {
+      console.log(`[Niagara Auth]: Using Manual Cookie Bypass`);
+      sessionCookie = creds.manualCookie;
+    } else {
+      sessionCookie = await loginToNiagara(creds);
+    }
 
     // 2. Perform actual ORD request with the cookie and CSRF headers
     console.log(`[Niagara Request]: GET ${url}`);
@@ -233,7 +239,11 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
   
   let sessionCookie = '';
   try {
-    sessionCookie = await loginToNiagara(creds);
+    if (creds.manualCookie && creds.manualCookie.trim() !== '') {
+      sessionCookie = creds.manualCookie;
+    } else {
+      sessionCookie = await loginToNiagara(creds);
+    }
   } catch (e) {
     return { success: false, error: "AUTH_FAILED", diagnostic: "Could not establish session for discovery." };
   }

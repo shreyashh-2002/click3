@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Loader2, Filter, Globe, ShieldAlert, CheckCircle2, ShieldCheck, HelpCircle } from 'lucide-react';
+import { Database, Loader2, Filter, Globe, ShieldAlert, CheckCircle2, ShieldCheck, HelpCircle, KeyRound } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { discoverOrdsServer, testNiagaraConnection } from '@/app/actions/niagara';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -46,6 +46,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
     const [stationUrl, setStationUrl] = useState('');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
+    const [manualCookie, setManualCookie] = useState('');
     const [startPath, setStartPath] = useState('Config');
     const [mapping, setMapping] = useState<PointMappingOutput | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -59,16 +60,18 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
     useEffect(() => {
         setStationUrl(localStorage.getItem('niagara-url') || '');
         setUsername(localStorage.getItem('niagara-user') || '');
+        setManualCookie(localStorage.getItem('niagara-cookie') || '');
     }, []);
 
     const saveCredentials = () => {
         localStorage.setItem('niagara-url', stationUrl);
         localStorage.setItem('niagara-user', username);
+        localStorage.setItem('niagara-cookie', manualCookie);
     };
 
     const handleTestConnection = async () => {
-        if (!stationUrl || !username || !password) {
-            toast({ title: "Missing Credentials", description: "Enter all fields.", variant: "destructive" });
+        if (!stationUrl || (!manualCookie && (!username || !password))) {
+            toast({ title: "Missing Information", description: "Enter Station URL and either credentials or a manual cookie.", variant: "destructive" });
             return;
         }
         setIsTesting(true);
@@ -78,7 +81,12 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
         saveCredentials();
 
         try {
-            const result = await testNiagaraConnection({ url: stationUrl, user: username, pass: password });
+            const result = await testNiagaraConnection({ 
+              url: stationUrl, 
+              user: username, 
+              pass: password,
+              manualCookie: manualCookie 
+            });
             if (result.success && result.data) {
                 setConnectedStation(result.data.stationName);
                 toast({ title: "Connected!", description: `Reached: ${result.data.stationName}` });
@@ -94,11 +102,16 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
     };
 
     const handleAutoDiscover = async () => {
-        if (!stationUrl || !username || !password) return;
+        if (!stationUrl) return;
         setIsFetching(true);
         setFetchError(null);
         setDiagnosticInfo(null);
-        const result = await discoverOrdsServer(startPath, { url: stationUrl, user: username, pass: password });
+        const result = await discoverOrdsServer(startPath, { 
+          url: stationUrl, 
+          user: username, 
+          pass: password,
+          manualCookie: manualCookie 
+        });
         if (result.success && result.data) {
             const roomsMap: Record<string, Point[]> = {};
             result.data.forEach(ord => {
@@ -140,15 +153,15 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                         <AccordionTrigger className="py-2 hover:no-underline">
                             <div className="flex items-center gap-2 text-xs font-bold text-amber-500">
                                 <ShieldCheck className="h-4 w-4" />
-                                NIAGARA SECURITY CHECKLIST
+                                HARDCORE BYPASS GUIDE
                             </div>
                         </AccordionTrigger>
                         <AccordionContent className="bg-amber-500/5 rounded-md p-3 space-y-2 border border-amber-500/20">
                             <ul className="text-[10px] space-y-1 text-amber-700 list-disc pl-4">
-                                <li><strong>Empty Header Fix:</strong> If Workbench logs silence, go to <code>WebService</code> and ensure <strong>Basic</strong> or <strong>Digest</strong> is checked in <code>Authentication Schemes</code>.</li>
-                                <li><strong>User Lockout:</strong> Check <code>UserService</code> to see if the user is currently locked.</li>
-                                <li><strong>CORS:</strong> Add <code>http://localhost:9002</code> to 'Allowed Origins' in WebService.</li>
-                                <li><strong>Logs:</strong> Check <strong>Application Director</strong> in Workbench.</li>
+                                <li>Open Niagara in Chrome and login normally.</li>
+                                <li>Press <strong>F12</strong> &gt; <strong>Application</strong> &gt; <strong>Cookies</strong>.</li>
+                                <li>Copy the <strong>JSESSIONID</strong> value (e.g. <code>JSESSIONID=abc...</code>).</li>
+                                <li>Paste it into the <strong>Manual Cookie</strong> field below to bypass automated login errors.</li>
                             </ul>
                         </AccordionContent>
                     </AccordionItem>
@@ -170,17 +183,6 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     </Alert>
                 )}
 
-                <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                        <Label className="text-[10px] uppercase text-muted-foreground">User</Label>
-                        <Input value={username} onChange={(e) => setUsername(e.target.value)} onBlur={saveCredentials} className="h-8 text-xs" />
-                    </div>
-                    <div className="space-y-1">
-                        <Label className="text-[10px] uppercase text-muted-foreground">Pass</Label>
-                        <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="h-8 text-xs" />
-                    </div>
-                </div>
-
                 <div className="space-y-1">
                     <Label className="text-[10px] uppercase text-muted-foreground">Station URL (HTTPS)</Label>
                     <div className="flex gap-2">
@@ -191,17 +193,35 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     </div>
                 </div>
 
+                <div className="grid grid-cols-2 gap-2 p-2 bg-muted/30 rounded border border-dashed">
+                    <div className="space-y-1">
+                        <Label className="text-[10px] uppercase text-muted-foreground">User</Label>
+                        <Input value={username} onChange={(e) => setUsername(e.target.value)} className="h-8 text-xs" />
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-[10px] uppercase text-muted-foreground">Pass</Label>
+                        <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="h-8 text-xs" />
+                    </div>
+                    <p className="col-span-2 text-[8px] text-muted-foreground italic text-center">Leave blank if using manual cookie below.</p>
+                </div>
+
                 <div className="space-y-1">
                     <div className="flex items-center gap-1">
+                        <KeyRound className="h-3 w-3 text-primary" />
+                        <Label className="text-[10px] uppercase text-muted-foreground">Manual Session Cookie (Bypass)</Label>
+                    </div>
+                    <Input 
+                      value={manualCookie} 
+                      onChange={(e) => setManualCookie(e.target.value)} 
+                      placeholder="JSESSIONID=xxxx..." 
+                      className="h-8 text-xs font-mono"
+                      onBlur={saveCredentials}
+                    />
+                </div>
+
+                <div className="space-y-1 pt-2 border-t">
+                    <div className="flex items-center gap-1">
                         <Label className="text-[10px] uppercase text-muted-foreground">Discovery Path</Label>
-                        <TooltipProvider>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
-                                </TooltipTrigger>
-                                <TooltipContent><p className="text-[10px]">Start crawling from here (e.g. Config)</p></TooltipContent>
-                            </Tooltip>
-                        </TooltipProvider>
                     </div>
                     <div className="flex gap-2">
                         <Input value={startPath} onChange={(e) => setStartPath(e.target.value)} className="h-8 text-xs font-mono flex-1" />
