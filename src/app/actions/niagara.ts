@@ -28,9 +28,11 @@ export type ServerActionResult<T> = {
  */
 function parseDigestHeader(header: string): Record<string, string> {
   const params: Record<string, string> = {};
+  // Match key="value" or key=value
   const parts = header.substring(7).split(/,\s*(?=(?:[^"]|"[^"]*")*$)/);
   parts.forEach(part => {
-    const [key, value] = part.split('=');
+    const [key, ...valParts] = part.split('=');
+    const value = valParts.join('=');
     if (key && value) {
       params[key.trim()] = value.replace(/"/g, '').trim();
     }
@@ -39,7 +41,7 @@ function parseDigestHeader(header: string): Record<string, string> {
 }
 
 /**
- * Calculates the Digest response hash.
+ * Calculates the Digest response hash according to RFC 2617.
  */
 function calculateDigestResponse(
   method: string,
@@ -54,9 +56,12 @@ function calculateDigestResponse(
   const ha1 = md5(`${creds.user}:${params.realm}:${creds.pass}`);
   const ha2 = md5(`${method}:${uri}`);
   
-  // Standard Digest response calculation for qop="auth"
-  if (params.qop === 'auth' || params.qop === 'auth-int') {
-    return md5(`${ha1}:${params.nonce}:${nc}:${cnonce}:${params.qop}:${ha2}`);
+  // Niagara usually uses qop="auth"
+  // If multiple qop values are offered, pick 'auth'
+  const qop = params.qop?.split(',')[0].trim();
+
+  if (qop === 'auth' || qop === 'auth-int') {
+    return md5(`${ha1}:${params.nonce}:${nc}:${cnonce}:${qop}:${ha2}`);
   }
   
   // Legacy Digest (no qop)
@@ -75,7 +80,8 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
     path: parsedUrl.pathname + parsedUrl.search,
     headers: {
       'Accept': 'application/json',
-      'User-Agent': 'Niagara-Point-Mapper-Dev',
+      // Adding a real-world User-Agent often helps with Niagara/Firewall filters
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     },
     agent: new https.Agent({ rejectUnauthorized: false }),
     timeout: 10000,
@@ -84,7 +90,7 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
   if (authHeader) {
     options.headers!['Authorization'] = authHeader;
   } else {
-    // Default to Basic as first attempt
+    // Default to Basic as first attempt to trigger 401 challenge
     const basic = Buffer.from(`${creds.user}:${creds.pass}`).toString('base64');
     options.headers!['Authorization'] = `Basic ${basic}`;
   }
@@ -99,9 +105,18 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
           const params = parseDigestHeader(res.headers['www-authenticate']);
           const nc = '00000001';
           const cnonce = crypto.randomBytes(8).toString('hex');
+          const qop = params.qop?.split(',')[0].trim();
+          
           const response = calculateDigestResponse('GET', options.path!, creds, params, nc, cnonce);
           
-          const digestHeader = `Digest username="${creds.user}", realm="${params.realm}", nonce="${params.nonce}", uri="${options.path}", qop=${params.qop}, nc=${nc}, cnonce="${cnonce}", response="${response}", opaque="${params.opaque || ''}"`;
+          let digestHeader = `Digest username="${creds.user}", realm="${params.realm}", nonce="${params.nonce}", uri="${options.path}", response="${response}"`;
+          
+          if (qop) {
+            digestHeader += `, qop=${qop}, nc=${nc}, cnonce="${cnonce}"`;
+          }
+          if (params.opaque) {
+            digestHeader += `, opaque="${params.opaque}"`;
+          }
           
           try {
             const retryData = await niagaraRequest(url, creds, digestHeader);
@@ -112,23 +127,40 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
           return;
         }
 
-        if (res.statusCode === 401) return reject({ error: "AUTH_FAILED", diagnostic: "Niagara rejected credentials. Check Username/Password or WebService Auth schemes." });
-        if (res.statusCode === 403) return reject({ error: "FORBIDDEN", diagnostic: "Access denied. Check User Permissions or CORS Origins." });
+        if (res.statusCode === 401) {
+          return reject({ 
+            error: "AUTH_FAILED", 
+            diagnostic: "Niagara rejected credentials. Check Username/Password or 'Application Director' in Workbench logs for the exact rejection reason." 
+          });
+        }
+        
+        if (res.statusCode === 403) {
+          return reject({ 
+            error: "FORBIDDEN", 
+            diagnostic: "Access denied. Check if the user has 'Read' permissions and if 'CORS' Allowed Origins includes your local dev URL." 
+          });
+        }
         
         if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
           try {
             resolve(JSON.parse(data));
           } catch (e) {
-            reject({ error: "PARSE_ERROR", diagnostic: "Station returned non-JSON data. Ensure the ORD path is correct and doesn't redirect to HTML." });
+            reject({ 
+              error: "PARSE_ERROR", 
+              diagnostic: "Station returned non-JSON data. Ensure the ORD path doesn't redirect to a login page." 
+            });
           }
         } else {
-          reject({ error: `STATION_ERROR_${res.statusCode}`, diagnostic: `Unexpected status code from station: ${res.statusCode}` });
+          reject({ 
+            error: `STATION_ERROR_${res.statusCode}`, 
+            diagnostic: `Unexpected status code from station: ${res.statusCode}` 
+          });
         }
       });
     });
 
-    req.on('error', (e: any) => reject({ error: "NETWORK_ERROR", diagnostic: e.message }));
-    req.on('timeout', () => { req.destroy(); reject({ error: "TIMEOUT", diagnostic: "Connection timed out." }); });
+    req.on('error', (e: any) => reject({ error: "NETWORK_ERROR", diagnostic: `Could not reach ${parsedUrl.hostname}. ${e.message}` }));
+    req.on('timeout', () => { req.destroy(); reject({ error: "TIMEOUT", diagnostic: "Connection timed out. Check network path or station WebService status." }); });
   });
 }
 
@@ -181,7 +213,7 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
   const foundOrds: Set<string> = new Set();
   const visitedPaths: Set<string> = new Set();
   let requestCount = 0;
-  const MAX_REQUESTS = 30; // Reduced for Digest performance
+  const MAX_REQUESTS = 30;
   const MAX_DEPTH = 3;
 
   async function crawl(path: string, depth: number = 0) {
@@ -223,6 +255,6 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
     await crawl(startPath);
     return { success: true, data: Array.from(foundOrds) };
   } catch (e: any) {
-    return { success: false, error: "CRITICAL_FAILURE", diagnostic: "Discovery engine failed." };
+    return { success: false, error: "CRITICAL_FAILURE", diagnostic: "Discovery engine failed during crawl." };
   }
 }

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Loader2, Filter, Globe, Network, ShieldAlert, CheckCircle2, ShieldCheck, Info } from 'lucide-react';
+import { Database, Loader2, Filter, Globe, Network, ShieldAlert, CheckCircle2, ShieldCheck, Info, HelpCircle } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { discoverOrdsServer, testNiagaraConnection } from '@/app/actions/niagara';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -15,6 +15,12 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 type Point = {
     ord: string;
@@ -83,7 +89,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             }
         } catch (e) {
             setFetchError("ACTION_CRASH");
-            setDiagnosticInfo("The server encountered an unhandled error. This usually means a networking timeout.");
+            setDiagnosticInfo("The server encountered an unhandled error. This usually means a networking timeout or SSL failure.");
         }
         setIsTesting(false);
     };
@@ -153,10 +159,10 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                         </AccordionTrigger>
                         <AccordionContent className="bg-amber-500/5 rounded-md p-3 space-y-2 border border-amber-500/20">
                             <ul className="text-[10px] space-y-1 text-amber-700 list-disc pl-4">
-                                <li><strong>WebService:</strong> Set 'Https Only' to true and check 'Basic Auth'.</li>
-                                <li><strong>CORS:</strong> Add this app's URL (e.g., http://localhost:9002) to 'Allowed Origins' in WebService.</li>
-                                <li><strong>Permissions:</strong> Ensure the user has 'Read' and 'Invoke' roles.</li>
-                                <li><strong>Application Director:</strong> Check Workbench logs for specific rejection reasons.</li>
+                                <li><strong>Workbench:</strong> Check <strong>Application Director</strong> for auth logs.</li>
+                                <li><strong>WebService:</strong> Ensure <strong>Digest</strong> or <strong>Basic</strong> is enabled.</li>
+                                <li><strong>CORS:</strong> Add <code>http://localhost:9002</code> to 'Allowed Origins'.</li>
+                                <li><strong>User:</strong> Verify the user is not locked in <code>UserService</code>.</li>
                             </ul>
                         </AccordionContent>
                     </AccordionItem>
@@ -174,7 +180,12 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     <Alert variant="destructive" className="py-2 px-3">
                         <ShieldAlert className="h-4 w-4" />
                         <AlertTitle className="text-xs font-bold uppercase">{fetchError}</AlertTitle>
-                        <AlertDescription className="text-[10px] mt-1">{diagnosticInfo}</AlertDescription>
+                        <AlertDescription className="text-[10px] mt-1">
+                            {diagnosticInfo}
+                            <div className="mt-2 p-1 bg-destructive-foreground/10 rounded font-mono text-[9px] border border-destructive/20">
+                                Tip: If auth fails, check if your password contains special characters that might need URL encoding.
+                            </div>
+                        </AlertDescription>
                     </Alert>
                 )}
 
@@ -200,7 +211,19 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 </div>
 
                 <div className="space-y-1">
-                    <Label className="text-[10px] uppercase text-muted-foreground">Root Path</Label>
+                    <div className="flex items-center gap-1">
+                        <Label className="text-[10px] uppercase text-muted-foreground">Root Path</Label>
+                        <TooltipProvider>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p className="text-[10px]">Start crawling from here (e.g. Config, Drivers)</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+                    </div>
                     <div className="flex gap-2">
                         <Input value={startPath} onChange={(e) => setStartPath(e.target.value)} className="h-8 text-xs font-mono flex-1" />
                         <Button variant="secondary" size="sm" onClick={handleAutoDiscover} disabled={isFetching} className="h-8">
