@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Loader2, Filter, Globe, AlertCircle, CheckCircle2, Network, ShieldAlert } from 'lucide-react';
+import { Database, Loader2, Filter, Globe, AlertCircle, CheckCircle2, Network, ShieldAlert, Info } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { discoverOrdsServer, testNiagaraConnection } from '@/app/actions/niagara';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -191,7 +191,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     <Network className="h-4 w-4 text-blue-500" />
                     <AlertTitle className="text-xs font-bold text-blue-600 uppercase">Networking Note</AlertTitle>
                     <AlertDescription className="text-[10px] text-blue-700 leading-tight">
-                        Cloud apps cannot see local IPs (192.x). Use a public URL or run the app locally.
+                        Cloud servers cannot see local IPs (192.168.x.x). For this to work, you must use a public URL or run the app locally.
                     </AlertDescription>
                 </Alert>
 
@@ -206,11 +206,11 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 )}
 
                 {fetchError && (
-                    <Alert variant="destructive" className="py-2 px-3">
+                    <Alert variant="destructive" className="py-2 px-3 border-destructive/50">
                         <ShieldAlert className="h-4 w-4" />
                         <AlertTitle className="text-xs font-bold uppercase">{fetchError}</AlertTitle>
                         <AlertDescription className="text-[10px] leading-tight mt-1">
-                            {diagnosticInfo || "No additional diagnostic info available."}
+                            {diagnosticInfo || "Check credentials and WebService settings."}
                         </AlertDescription>
                     </Alert>
                 )}
@@ -229,7 +229,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     <div className="space-y-1.5">
                         <Label htmlFor="niagara-url">Station URL (HTTPS)</Label>
                         <div className="flex gap-2">
-                            <Input id="niagara-url" value={stationUrl} onChange={(e) => setStationUrl(e.target.value)} placeholder="https://192.168.1.225" onBlur={saveCredentials} />
+                            <Input id="niagara-url" value={stationUrl} onChange={(e) => setStationUrl(e.target.value)} placeholder="https://jace-public-url.com" onBlur={saveCredentials} />
                             <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={isTesting}>
                                 {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Test"}
                             </Button>
