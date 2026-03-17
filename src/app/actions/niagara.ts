@@ -6,7 +6,7 @@
  * Exclusively uses Session-based (Cookie) Authentication.
  * 1. POSTs to /login with j_username/j_password.
  * 2. Captures the 'Set-Cookie' header (JSESSIONID).
- * 3. Uses the cookie for subsequent ORD requests.
+ * 3. Uses the cookie and CSRF headers (Referer/Origin) for subsequent requests.
  */
 
 import https from 'https';
@@ -73,8 +73,6 @@ async function performRequest(
  */
 async function loginToNiagara(creds: NiagaraCredentials): Promise<string> {
   const baseUrl = creds.url.endsWith('/') ? creds.url.slice(0, -1) : creds.url;
-  
-  // Standard Niagara 4 login endpoint
   const loginUrl = `${baseUrl}/login`;
   
   const postData = querystring.stringify({
@@ -94,11 +92,15 @@ async function loginToNiagara(creds: NiagaraCredentials): Promise<string> {
   const cookies = response.headers['set-cookie'];
   
   if (cookies && Array.isArray(cookies)) {
-    // Join all cookies (JSESSIONID, niagara_session, etc.)
-    const cookieStr = cookies.map(c => c.split(';')[0]).join('; ');
-    console.log(`[Niagara Auth]: Success. Status: ${response.status}. Cookies captured: ${cookieStr.substring(0, 30)}...`);
+    console.log("[Niagara Auth Debug] FULL RAW COOKIES:", cookies);
     
-    // In many Niagara setups, a successful login returns a 302 redirect to /
+    // Prepare cookies for the Cookie request header
+    // We take the first part of each Set-Cookie (name=value)
+    const cookieStr = cookies.map(c => c.split(';')[0]).join('; ');
+    
+    console.log(`[Niagara Auth]: Success. Status: ${response.status}. Session cookies captured.`);
+    
+    // Successful login usually results in a 302 redirect or a 200 OK
     if (response.status === 302 || response.status === 200) {
       return cookieStr;
     }
@@ -117,11 +119,13 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
     // 1. Get Session Cookie
     const sessionCookie = await loginToNiagara(creds);
 
-    // 2. Perform actual ORD request with the cookie
+    // 2. Perform actual ORD request with the cookie and CSRF headers
     console.log(`[Niagara Request]: GET ${url}`);
     const result = await performRequest(url, 'GET', {
       'Cookie': sessionCookie,
-      'Accept': 'application/json'
+      'Accept': 'application/json',
+      'Referer': baseUrl + '/',
+      'Origin': baseUrl
     });
 
     if (result.status === 200) {
@@ -129,23 +133,28 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
         const json = JSON.parse(result.data);
         return { success: true, data: json };
       } catch (e) {
-        return { success: false, error: "PARSE_ERROR", diagnostic: "Station returned non-JSON data. The ORD servlet might be disabled or returning an HTML error page." };
+        return { 
+          success: false, 
+          error: "PARSE_ERROR", 
+          diagnostic: "Station returned non-JSON data. The ORD servlet might be returning an HTML error page." 
+        };
       }
     }
 
-    // If we get a 302 here, it means the session cookie was rejected and Niagara is trying to redirect us back to login
+    // If we get a 302 here, it means Niagara is rejecting the session/origin and redirecting to login
     if (result.status === 302 || result.status === 301) {
+      console.warn(`[Niagara Warning]: Request to ${url} was redirected (302). Session or CSRF check failed.`);
       return {
         success: false,
         error: "SESSION_EXPIRED",
-        diagnostic: "The session was established, but the ORD request was redirected. Ensure the user has 'Read' and 'Invoke' permissions for the ORD servlet."
+        diagnostic: "The session was established, but the request was redirected. Check 'Allowed Origins' in Niagara WebService and ensure the user has 'Read' and 'Invoke' permissions for the ORD servlet."
       };
     }
 
     return { 
       success: false, 
       error: `STATION_ERROR_${result.status}`, 
-      diagnostic: `Status: ${result.status}. The request was reached but the station rejected it.` 
+      diagnostic: `Status: ${result.status}. The request reached the station but was rejected.` 
     };
 
   } catch (err: any) {
@@ -154,7 +163,7 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
       success: false, 
       error: err.message === "LOGIN_REJECTED" ? "AUTH_FAILED" : "NETWORK_ERROR", 
       diagnostic: err.message === "LOGIN_REJECTED" 
-        ? "Session login failed. Check credentials and ensure Basic/Digest isn't the only allowed scheme if using Form login." 
+        ? "Session login failed. Check credentials and ensure Basic/Digest isn't the ONLY allowed scheme if using Form login." 
         : `Connection failed: ${err.message}` 
     };
   }
@@ -185,16 +194,23 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
     return { success: false, error: "AUTH_FAILED", diagnostic: "Could not establish session for discovery." };
   }
   
+  const baseUrl = creds.url.endsWith('/') ? creds.url.slice(0, -1) : creds.url;
+
   async function crawl(path: string, depth: number = 0) {
     if (depth > 2 || visitedPaths.has(path) || requestCount >= 30) return;
     visitedPaths.add(path);
     requestCount++;
 
-    const baseUrl = creds.url.endsWith('/') ? creds.url.slice(0, -1) : creds.url;
     const url = `${baseUrl}/ord/${path}`;
     
     try {
-      const response = await performRequest(url, 'GET', { 'Cookie': sessionCookie, 'Accept': 'application/json' });
+      const response = await performRequest(url, 'GET', { 
+        'Cookie': sessionCookie, 
+        'Accept': 'application/json',
+        'Referer': baseUrl + '/',
+        'Origin': baseUrl
+      });
+      
       if (response.status === 200) {
         const data = JSON.parse(response.data);
         if (data && Array.isArray(data.children)) {
