@@ -73,7 +73,7 @@ async function performRequest(
 async function loginToNiagara(creds: NiagaraCredentials): Promise<string> {
   const baseUrl = creds.url.endsWith('/') ? creds.url.slice(0, -1) : creds.url;
   
-  // STEP 1: Initial GET to establishment session context
+  // STEP 1: Initial GET to establish session context (Mandatory for N4)
   console.log(`[Niagara Auth]: 1. Initial GET to ${baseUrl}/login`);
   const initialRes = await performRequest(`${baseUrl}/login`, 'GET', {
     'Referer': baseUrl + '/',
