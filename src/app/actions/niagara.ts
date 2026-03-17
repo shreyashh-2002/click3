@@ -31,7 +31,6 @@ function parseDigestHeader(header: string): Record<string, string> {
   try {
     if (!header) return params;
     
-    // Find where "Digest " starts
     const digestStart = header.indexOf('Digest ');
     if (digestStart === -1) return params;
 
@@ -63,22 +62,13 @@ function calculateDigestResponse(
   cnonce: string
 ): string {
   const md5 = (str: string) => crypto.createHash('md5').update(str).digest('hex');
-
-  // HA1 = MD5(username:realm:password)
   const ha1 = md5(`${creds.user}:${params.realm}:${creds.pass}`);
-  
-  // HA2 = MD5(method:digestURI)
   const ha2 = md5(`${method}:${uri}`);
-  
-  // Niagara usually uses qop="auth"
   const qop = params.qop?.split(',')[0].trim();
 
   if (qop === 'auth' || qop === 'auth-int') {
-    // Response = MD5(HA1:nonce:nc:cnonce:qop:HA2)
     return md5(`${ha1}:${params.nonce}:${nc}:${cnonce}:${qop}:${ha2}`);
   }
-  
-  // Legacy Digest (no qop)
   return md5(`${ha1}:${params.nonce}:${ha2}`);
 }
 
@@ -94,10 +84,10 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
     path: parsedUrl.pathname + parsedUrl.search,
     headers: {
       'Accept': 'application/json',
-      'User-Agent': 'NiagaraApp/1.0 (NextJS Server Action)',
+      'User-Agent': 'Mozilla/5.0 (NiagaraApp/1.0)',
     },
-    agent: new https.Agent({ rejectUnauthorized: false }), // Handle self-signed certs
-    timeout: 10000, // 10 seconds
+    agent: new https.Agent({ rejectUnauthorized: false }), 
+    timeout: 10000,
   };
 
   if (authHeader) {
@@ -117,209 +107,111 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
         const wwwAuth = (res.headers['www-authenticate'] as string) || '';
         console.log(`[Niagara Response]: Status ${res.statusCode} from ${parsedUrl.hostname}`);
 
-        // 1. Handle Digest Challenge
-        if (res.statusCode === 401 && wwwAuth.toLowerCase().includes('digest') && !authHeader) {
-          console.log(`[Niagara Auth]: Station requested Digest handshake.`);
-          const params = parseDigestHeader(wwwAuth);
-          
-          if (!params.nonce || !params.realm) {
-             console.error(`[Niagara Auth Error]: Digest challenge missing realm or nonce.`);
-             return reject({ error: "AUTH_FAILED", diagnostic: "Invalid Digest challenge from Niagara." });
-          }
-
-          const nc = '00000001';
-          const cnonce = crypto.randomBytes(8).toString('hex');
-          const qop = params.qop?.split(',')[0].trim();
-          
-          const responseHash = calculateDigestResponse('GET', options.path!, creds, params, nc, cnonce);
-          
-          let digestHeader = `Digest username="${creds.user}", realm="${params.realm}", nonce="${params.nonce}", uri="${options.path}", response="${responseHash}"`;
-          
-          if (qop) {
-            digestHeader += `, qop=${qop}, nc=${nc}, cnonce="${cnonce}"`;
-          }
-          if (params.opaque) {
-            digestHeader += `, opaque="${params.opaque}"`;
-          }
-          
-          try {
-            const retryData = await niagaraRequest(url, creds, digestHeader);
-            resolve(retryData);
-          } catch (e) {
-            reject(e);
-          }
-          return;
-        }
-
-        // 2. Handle Authentication Failure
         if (res.statusCode === 401) {
+          console.log(`[Niagara Debug]: All Response Headers:`, JSON.stringify(res.headers, null, 2));
+          
+          if (wwwAuth.toLowerCase().includes('digest') && !authHeader) {
+            console.log(`[Niagara Auth]: Station requested Digest handshake.`);
+            const params = parseDigestHeader(wwwAuth);
+            const nc = '00000001';
+            const cnonce = crypto.randomBytes(8).toString('hex');
+            const responseHash = calculateDigestResponse('GET', options.path!, creds, params, nc, cnonce);
+            let digestHeader = `Digest username="${creds.user}", realm="${params.realm}", nonce="${params.nonce}", uri="${options.path}", response="${responseHash}"`;
+            if (params.qop) digestHeader += `, qop=${params.qop.split(',')[0].trim()}, nc=${nc}, cnonce="${cnonce}"`;
+            if (params.opaque) digestHeader += `, opaque="${params.opaque}"`;
+            
+            try {
+              const retryData = await niagaraRequest(url, creds, digestHeader);
+              resolve(retryData);
+            } catch (e) {
+              reject(e);
+            }
+            return;
+          }
+
           console.error(`[Niagara Auth Error]: Rejected credentials for ${creds.user}`);
-          console.error(`[Niagara Debug]: WWW-Authenticate Header: "${wwwAuth}"`);
           return reject({ 
             error: "AUTH_FAILED", 
-            diagnostic: `Niagara rejected credentials. Station requested: ${wwwAuth || 'No scheme specified'}` 
-          });
-        }
-        
-        // 3. Handle Permission Denied
-        if (res.statusCode === 403) {
-          return reject({ 
-            error: "FORBIDDEN", 
-            diagnostic: "Access denied. Check if the user has 'Read' permissions on the station." 
+            diagnostic: `Niagara rejected credentials. WWW-Authenticate: "${wwwAuth || 'EMPTY'}". Check if Basic/Digest is enabled and the user is not locked.` 
           });
         }
 
-        // 4. Handle HTML Redirection
+        if (res.statusCode === 403) {
+          return reject({ error: "FORBIDDEN", diagnostic: "Access denied. Check user permissions in Niagara." });
+        }
+
         const contentType = res.headers['content-type'] || '';
         if (contentType.includes('text/html')) {
-          console.warn(`[Niagara Data Warning]: Station returned HTML instead of JSON. Check the ORD path.`);
-          return reject({
-            error: "HTML_RESPONSE",
-            diagnostic: "Station returned a web page (likely a login page) instead of data."
-          });
+          return reject({ error: "HTML_RESPONSE", diagnostic: "Station returned HTML (likely a login page redirect). Check WebService settings." });
         }
         
-        // 5. Success
         if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
           try {
             resolve(JSON.parse(data));
           } catch (e) {
-            console.error(`[Niagara Parse Error]: Failed to parse JSON response.`);
-            reject({ 
-              error: "PARSE_ERROR", 
-              diagnostic: "Received invalid JSON. Ensure the endpoint supports JSON responses." 
-            });
+            reject({ error: "PARSE_ERROR", diagnostic: "Received invalid JSON from station." });
           }
         } else {
-          reject({ 
-            error: `STATION_ERROR_${res.statusCode}`, 
-            diagnostic: `Station responded with status code: ${res.statusCode}` 
-          });
+          reject({ error: `STATION_ERROR_${res.statusCode}`, diagnostic: `Status: ${res.statusCode}` });
         }
       });
     });
 
-    req.on('error', (e: any) => {
-      console.error(`[Niagara Network Error]: ${e.message}`);
-      reject({ 
-        error: "NETWORK_ERROR", 
-        diagnostic: `Connection failed: ${e.message}` 
-      });
-    });
-
-    req.on('timeout', () => {
-      req.destroy();
-      console.error(`[Niagara Timeout]: Station took too long to respond.`);
-      reject({ 
-        error: "TIMEOUT", 
-        diagnostic: "Connection timed out." 
-      });
-    });
+    req.on('error', (e: any) => reject({ error: "NETWORK_ERROR", diagnostic: e.message }));
+    req.on('timeout', () => { req.destroy(); reject({ error: "TIMEOUT", diagnostic: "Request timed out." }); });
   });
 }
 
-/**
- * Proxies a read request to a Niagara station.
- */
 export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Promise<ServerActionResult<any>> {
   try {
     const baseUrl = creds.url.endsWith('/') ? creds.url.slice(0, -1) : creds.url;
-    
-    let cleanPath = path;
-    if (!cleanPath.startsWith('station:|slot:/')) {
-      if (cleanPath.startsWith('slot:/')) {
-        cleanPath = `station:|${cleanPath}`;
-      } else {
-        cleanPath = `station:|slot:/${cleanPath.replace(/^\/+/, '')}`;
-      }
-    }
-
+    let cleanPath = path.startsWith('station:|slot:/') ? path : `station:|slot:/${path.replace(/^\/+/, '')}`;
     const url = `${baseUrl}/ord/${cleanPath}`;
-
     const data = await niagaraRequest(url, creds);
     return { success: true, data };
   } catch (err: any) {
     console.error("[Niagara Proxy Logic Error]:", err);
-    return { 
-      success: false, 
-      error: err.error || "SERVER_CRASH", 
-      diagnostic: err.diagnostic || "An unexpected error occurred." 
-    };
+    return { success: false, error: err.error || "SERVER_CRASH", diagnostic: err.diagnostic || "Unexpected error." };
   }
 }
 
-/**
- * Verifies connectivity and returns station info.
- */
 export async function testNiagaraConnection(creds: NiagaraCredentials): Promise<ServerActionResult<{ stationName: string; type: string }>> {
   try {
     const result = await proxyFetchOrd('station:|slot:/', creds);
     if (result.success && result.data) {
-      return {
-        success: true,
-        data: {
-          stationName: result.data.name || result.data.stationName || "Niagara Station",
-          type: result.data.type || "BStation"
-        }
-      };
+      return { success: true, data: { stationName: result.data.name || "Station", type: result.data.type || "BStation" } };
     }
     return result;
   } catch (e) {
-    console.error("[Niagara Test Error]:", e);
     return { success: false, error: "ACTION_FAILED", diagnostic: "Test connection crashed internally." };
   }
 }
 
-/**
- * Server-side crawler to discover all ORDs.
- */
 export async function discoverOrdsServer(startPath: string, creds: NiagaraCredentials): Promise<ServerActionResult<string[]>> {
   const foundOrds: Set<string> = new Set();
   const visitedPaths: Set<string> = new Set();
   let requestCount = 0;
-  const MAX_REQUESTS = 50;
-  const MAX_DEPTH = 3;
-
   async function crawl(path: string, depth: number = 0) {
-    if (depth > MAX_DEPTH || visitedPaths.has(path) || requestCount >= MAX_REQUESTS) return;
+    if (depth > 2 || visitedPaths.has(path) || requestCount >= 30) return;
     visitedPaths.add(path);
     requestCount++;
-
     const result = await proxyFetchOrd(path, creds);
-    
     if (result.success && result.data && Array.isArray(result.data.children)) {
       for (const child of result.data.children) {
+        if (child.ord?.includes('/services')) continue;
         const type = (child.type || '').toLowerCase();
-        const ord = child.ord || '';
-        
-        const isPoint = 
-          type.includes('point') || 
-          type.includes('writable') || 
-          type.includes('proxy') ||
-          type.includes('numeric') ||
-          type.includes('boolean');
-
-        const isFolder = 
-          type.includes('folder') || 
-          type.includes('device') || 
-          type.includes('network');
-        
-        if (ord.toLowerCase().includes('/services')) continue;
-
-        if (isPoint) {
-          foundOrds.add(ord);
-        } else if (isFolder && depth < MAX_DEPTH && foundOrds.size < 100) {
-          await crawl(ord, depth + 1);
+        if (type.includes('point') || type.includes('numeric') || type.includes('boolean')) {
+          foundOrds.add(child.ord);
+        } else if (depth < 2) {
+          await crawl(child.ord, depth + 1);
         }
       }
     }
   }
-
   try {
     await crawl(startPath);
     return { success: true, data: Array.from(foundOrds) };
   } catch (e: any) {
-    console.error("[Niagara Discovery Error]:", e);
-    return { success: false, error: "CRITICAL_FAILURE", diagnostic: "Discovery engine failed during crawl." };
+    return { success: false, error: "CRITICAL_FAILURE", diagnostic: e.message };
   }
 }

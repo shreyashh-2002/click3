@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Loader2, Filter, Globe, Network, ShieldAlert, CheckCircle2, ShieldCheck, Info, HelpCircle } from 'lucide-react';
+import { Database, Loader2, Filter, Globe, ShieldAlert, CheckCircle2, ShieldCheck, HelpCircle } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { discoverOrdsServer, testNiagaraConnection } from '@/app/actions/niagara';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -43,7 +43,6 @@ interface OrdMapperPanelProps {
 }
 
 export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps) {
-    const [rawOrds, setRawOrds] = useState('');
     const [stationUrl, setStationUrl] = useState('');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -89,7 +88,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             }
         } catch (e) {
             setFetchError("ACTION_CRASH");
-            setDiagnosticInfo("The server encountered an unhandled error. This usually means a networking timeout or SSL failure.");
+            setDiagnosticInfo("The server action encountered an unexpected error.");
         }
         setIsTesting(false);
     };
@@ -101,22 +100,8 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
         setDiagnosticInfo(null);
         const result = await discoverOrdsServer(startPath, { url: stationUrl, user: username, pass: password });
         if (result.success && result.data) {
-            setRawOrds(result.data.join('\n'));
-            toast({ title: "Discovery Complete", description: `Found ${result.data.length} points.` });
-        } else {
-            setFetchError(result.error || "Discovery Failed");
-            setDiagnosticInfo(result.diagnostic || null);
-        }
-        setIsFetching(false);
-    };
-
-    const handleProcess = () => {
-        const ordArray = rawOrds.split('\n').map(s => s.trim()).filter(Boolean);
-        if (ordArray.length === 0) return;
-        setIsLoading(true);
-        setTimeout(() => {
             const roomsMap: Record<string, Point[]> = {};
-            ordArray.forEach(ord => {
+            result.data.forEach(ord => {
                 const parts = ord.split('/');
                 const pointName = parts[parts.length - 1] || 'Point';
                 let roomName = parts.length > 2 ? parts[parts.length - 2] : 'Global';
@@ -125,9 +110,6 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     if (l.includes('temp')) return 'Temperature';
                     if (l.includes('set')) return 'Setpoint';
                     if (l.includes('hum')) return 'Humidity';
-                    if (l.includes('occ')) return 'Occupancy';
-                    if (l.includes('stat')) return 'Status';
-                    if (l.includes('cmd')) return 'Command';
                     return 'Other';
                 };
                 const point: Point = { ord, category: categorize(pointName), label: pointName.replace(/_/g, ' ') };
@@ -135,8 +117,12 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 roomsMap[roomName].push(point);
             });
             setMapping({ rooms: Object.entries(roomsMap).map(([roomName, points]) => ({ roomName, points })), generatedScriptPreview: '' });
-            setIsLoading(false);
-        }, 500);
+            toast({ title: "Discovery Complete", description: `Found ${result.data.length} points.` });
+        } else {
+            setFetchError(result.error || "Discovery Failed");
+            setDiagnosticInfo(result.diagnostic || null);
+        }
+        setIsFetching(false);
     };
 
     return (
@@ -159,10 +145,10 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                         </AccordionTrigger>
                         <AccordionContent className="bg-amber-500/5 rounded-md p-3 space-y-2 border border-amber-500/20">
                             <ul className="text-[10px] space-y-1 text-amber-700 list-disc pl-4">
-                                <li><strong>Workbench:</strong> Check <strong>Application Director</strong> for auth logs.</li>
-                                <li><strong>WebService:</strong> Ensure <strong>Digest</strong> or <strong>Basic</strong> is enabled.</li>
-                                <li><strong>CORS:</strong> Add <code>http://localhost:9002</code> to 'Allowed Origins'.</li>
-                                <li><strong>User:</strong> Verify the user is not locked in <code>UserService</code>.</li>
+                                <li><strong>Empty Header Fix:</strong> If Workbench logs silence, go to <code>WebService</code> and ensure <strong>Basic</strong> or <strong>Digest</strong> is checked in <code>Authentication Schemes</code>.</li>
+                                <li><strong>User Lockout:</strong> Check <code>UserService</code> to see if the user is currently locked.</li>
+                                <li><strong>CORS:</strong> Add <code>http://localhost:9002</code> to 'Allowed Origins' in WebService.</li>
+                                <li><strong>Logs:</strong> Check <strong>Application Director</strong> in Workbench.</li>
                             </ul>
                         </AccordionContent>
                     </AccordionItem>
@@ -172,7 +158,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     <Alert className="bg-green-500/10 border-green-500/20 py-2 px-3">
                         <CheckCircle2 className="h-4 w-4 text-green-500" />
                         <AlertTitle className="text-xs font-bold text-green-600">CONNECTED</AlertTitle>
-                        <AlertDescription className="text-[10px] text-green-700">Verified reach to: <strong>{connectedStation}</strong></AlertDescription>
+                        <AlertDescription className="text-[10px] text-green-700">Reached: <strong>{connectedStation}</strong></AlertDescription>
                     </Alert>
                 )}
 
@@ -180,12 +166,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     <Alert variant="destructive" className="py-2 px-3">
                         <ShieldAlert className="h-4 w-4" />
                         <AlertTitle className="text-xs font-bold uppercase">{fetchError}</AlertTitle>
-                        <AlertDescription className="text-[10px] mt-1">
-                            {diagnosticInfo}
-                            <div className="mt-2 p-1 bg-destructive-foreground/10 rounded font-mono text-[9px] border border-destructive/20">
-                                Tip: If auth fails, check if your password contains special characters that might need URL encoding.
-                            </div>
-                        </AlertDescription>
+                        <AlertDescription className="text-[10px] mt-1">{diagnosticInfo}</AlertDescription>
                     </Alert>
                 )}
 
@@ -203,7 +184,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 <div className="space-y-1">
                     <Label className="text-[10px] uppercase text-muted-foreground">Station URL (HTTPS)</Label>
                     <div className="flex gap-2">
-                        <Input value={stationUrl} onChange={(e) => setStationUrl(e.target.value)} placeholder="https://192.168.1.225" className="h-8 text-xs flex-1" />
+                        <Input value={stationUrl} onChange={(e) => setStationUrl(e.target.value)} placeholder="https://127.0.0.1" className="h-8 text-xs flex-1" />
                         <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={isTesting} className="h-8">
                             {isTesting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Test"}
                         </Button>
@@ -212,15 +193,13 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
 
                 <div className="space-y-1">
                     <div className="flex items-center gap-1">
-                        <Label className="text-[10px] uppercase text-muted-foreground">Root Path</Label>
+                        <Label className="text-[10px] uppercase text-muted-foreground">Discovery Path</Label>
                         <TooltipProvider>
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent>
-                                    <p className="text-[10px]">Start crawling from here (e.g. Config, Drivers)</p>
-                                </TooltipContent>
+                                <TooltipContent><p className="text-[10px]">Start crawling from here (e.g. Config)</p></TooltipContent>
                             </Tooltip>
                         </TooltipProvider>
                     </div>
@@ -232,11 +211,6 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                         </Button>
                     </div>
                 </div>
-
-                <Button onClick={handleProcess} disabled={isLoading || !rawOrds} className="w-full h-9 shadow-md">
-                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Filter className="h-4 w-4 mr-2" />}
-                    Map Points
-                </Button>
 
                 {mapping && (
                     <div className="mt-2 max-h-48 overflow-auto space-y-2 pr-1 border-t pt-2">
