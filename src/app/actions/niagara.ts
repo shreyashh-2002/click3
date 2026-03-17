@@ -41,8 +41,10 @@ async function performRequest(
     port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
     path: parsedUrl.pathname + parsedUrl.search,
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'X-Requested-With': 'XMLHttpRequest', // Helps Niagara identify API calls
+      'User-Agent': 'Niagara-Dev-Tool/1.0 (NextJS Proxy)',
+      'X-Requested-With': 'XMLHttpRequest', // Mandatory to prevent HTML redirects
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
       ...headers,
     },
     agent: new https.Agent({ rejectUnauthorized: false }), // Ignore self-signed certs
@@ -107,14 +109,12 @@ async function loginToNiagara(creds: NiagaraCredentials): Promise<string> {
     sessionCookies = [...sessionCookies, ...(Array.isArray(newCookies) ? newCookies : [newCookies])];
   }
 
-  console.log(`[Niagara Auth Debug]: POST Status: ${response.status}`);
-  
   if (response.status === 302 || response.status === 200) {
     const redirectPath = response.headers['location'];
     
     // Check for auth failure
     if (redirectPath && redirectPath.includes('auth=fail')) {
-      console.error(`[Niagara Auth Error]: Login rejected by station (auth=fail)`);
+      console.error(`[Niagara Auth Error]: Login rejected (auth=fail)`);
       throw new Error("LOGIN_REJECTED");
     }
 
@@ -137,12 +137,9 @@ async function loginToNiagara(creds: NiagaraCredentials): Promise<string> {
       }
     }
 
-    const finalCookieStr = Array.from(new Set(
+    return Array.from(new Set(
       sessionCookies.map(c => c.split(';')[0])
     )).join('; ');
-
-    console.log("[Niagara Auth Debug] FINAL CONSOLIDATED COOKIES:", finalCookieStr);
-    return finalCookieStr;
   }
 
   throw new Error("LOGIN_REJECTED");
@@ -167,30 +164,32 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
     console.log(`[Niagara Request]: GET ${url}`);
     const result = await performRequest(url, 'GET', {
       'Cookie': sessionCookie,
-      'Accept': 'application/json',
+      'Accept': 'application/json, text/plain, */*',
+      'X-Niagara-Accept': 'application/json', // Force JSON on strict JACEs
       'Referer': baseUrl + '/',
       'Origin': baseUrl
     });
 
-    console.log(`[Niagara Response]: Status ${result.status} for ${url}`);
+    const contentType = result.headers['content-type'] || '';
+    console.log(`[Niagara Response]: Status ${result.status}, Content-Type: ${contentType}`);
 
     if (result.status === 200) {
-      try {
-        const json = JSON.parse(result.data);
-        return { success: true, data: json };
-      } catch (e) {
-        // DETAILED DIAGNOSTIC FOR PARSE_ERROR
-        const bodySnippet = result.data.substring(0, 150).trim();
-        const isHtml = bodySnippet.toLowerCase().includes('<!doctype html') || bodySnippet.toLowerCase().includes('<html');
+      // Check if we actually got JSON
+      if (contentType.toLowerCase().includes('application/json') || result.data.trim().startsWith('{') || result.data.trim().startsWith('[')) {
+        try {
+          const json = JSON.parse(result.data);
+          return { success: true, data: json };
+        } catch (e) {
+          return { success: false, error: "PARSE_ERROR", diagnostic: "Invalid JSON format received." };
+        }
+      } else {
+        const bodySnippet = result.data.substring(0, 150).replace(/\s+/g, ' ').trim();
+        console.warn(`[Niagara Format Error]: Station returned HTML snippet: "${bodySnippet}..."`);
         
-        console.warn(`[Niagara Parse Error]: Data snippet: "${bodySnippet}..."`);
-
         return { 
           success: false, 
           error: "PARSE_ERROR", 
-          diagnostic: isHtml 
-            ? "Station returned HTML instead of JSON. This means your session cookie was rejected and Niagara redirected you to the login page. Check that your JSESSIONID is fresh."
-            : `Station returned non-JSON data: "${bodySnippet}..."`
+          diagnostic: "Station returned HTML instead of JSON. Ensure 'JSON' is an allowed Media Type in the Niagara WebService."
         };
       }
     }
@@ -198,7 +197,7 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
     return { 
       success: false, 
       error: `STATION_ERROR_${result.status}`, 
-      diagnostic: `The station rejected the request with status ${result.status}.` 
+      diagnostic: `Station returned status ${result.status}.` 
     };
 
   } catch (err: any) {
@@ -207,7 +206,7 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
       success: false, 
       error: err.message === "LOGIN_REJECTED" ? "AUTH_FAILED" : "NETWORK_ERROR", 
       diagnostic: err.message === "LOGIN_REJECTED" 
-        ? "Session login failed. Redirected to auth=fail. Check credentials." 
+        ? "Session login failed. Check credentials." 
         : `Connection failed: ${err.message}` 
     };
   }
@@ -238,7 +237,7 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
       sessionCookie = await loginToNiagara(creds);
     }
   } catch (e) {
-    return { success: false, error: "AUTH_FAILED", diagnostic: "Could not establish session for discovery." };
+    return { success: false, error: "AUTH_FAILED", diagnostic: "Could not establish session." };
   }
   
   const baseUrl = creds.url.endsWith('/') ? creds.url.slice(0, -1) : creds.url;
@@ -254,11 +253,13 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
       const response = await performRequest(url, 'GET', { 
         'Cookie': sessionCookie, 
         'Accept': 'application/json',
+        'X-Niagara-Accept': 'application/json',
         'Referer': baseUrl + '/',
         'Origin': baseUrl
       });
       
-      if (response.status === 200) {
+      const contentType = response.headers['content-type'] || '';
+      if (response.status === 200 && contentType.toLowerCase().includes('json')) {
         const data = JSON.parse(response.data);
         if (data && Array.isArray(data.children)) {
           for (const child of data.children) {
