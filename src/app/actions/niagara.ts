@@ -20,6 +20,7 @@ export type ServerActionResult<T> = {
   success: boolean;
   data?: T;
   error?: string;
+  diagnostic?: string;
 };
 
 /**
@@ -60,11 +61,12 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
       if (response.status === 401) {
         return { 
           success: false, 
-          error: "AUTH_FAILED: Invalid credentials or Basic Auth is disabled in WebService." 
+          error: "AUTH_FAILED",
+          diagnostic: "Invalid credentials or 'Basic' Auth is disabled in the Niagara WebService."
         };
       }
-      if (response.status === 404) return { success: false, error: `NOT_FOUND: ${cleanPath}` };
-      if (response.status === 503) return { success: false, error: "STATION_BUSY: Niagara is rejecting requests." };
+      if (response.status === 404) return { success: false, error: `NOT_FOUND`, diagnostic: `The path '${cleanPath}' does not exist on the station.` };
+      if (response.status === 503) return { success: false, error: "STATION_BUSY", diagnostic: "The station is rejecting requests. Check CPU usage or WebService settings." };
       return { success: false, error: `STATION_ERROR_${response.status}` };
     }
 
@@ -73,13 +75,15 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
   } catch (error: any) {
     clearTimeout(timeoutId);
     
-    if (error.name === 'AbortError') return { success: false, error: "TIMEOUT: Station did not respond in time." };
-    if (error.code === 'ECONNREFUSED') return { success: false, error: "CONNECTION_REFUSED: IP is valid but station is not listening." };
+    // Categorize specific network failures
+    if (error.name === 'AbortError') return { success: false, error: "TIMEOUT", diagnostic: "The station did not respond within 10 seconds." };
+    if (error.code === 'ECONNREFUSED') return { success: false, error: "CONNECTION_REFUSED", diagnostic: "IP is valid, but the station rejected the connection (check the port)." };
+    if (error.code === 'ENOTFOUND' || error.code === 'EAI_AGAIN') return { success: false, error: "DNS_FAILED", diagnostic: "Could not find the station address. Check the URL spelling." };
     if (error.code === 'ENETUNREACH' || error.code === 'EHOSTUNREACH') {
-       return { success: false, error: "NETWORK_UNREACHABLE: Check your network/VPN connection." };
+       return { success: false, error: "NETWORK_UNREACHABLE", diagnostic: "Cannot reach the IP. Check your VPN or network connection." };
     }
     
-    return { success: false, error: error.message || "Unknown communication error." };
+    return { success: false, error: "INTERNAL_ERROR", diagnostic: error.message || "Unknown communication error." };
   }
 }
 
@@ -100,9 +104,9 @@ export async function testNiagaraConnection(creds: NiagaraCredentials): Promise<
       };
     }
     
-    return { success: false, error: result.error };
+    return { success: false, error: result.error, diagnostic: result.diagnostic };
   } catch (e: any) {
-    return { success: false, error: "Internal test failure." };
+    return { success: false, error: "CRASH", diagnostic: "Internal server crash during connection test." };
   }
 }
 
@@ -152,16 +156,16 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
         }
       }
     } else if (!result.success && depth === 0) {
-      return result.error;
+      return result.diagnostic || result.error;
     }
   }
 
   try {
     const initialCrawlError = await crawl(startPath);
-    if (initialCrawlError) return { success: false, error: initialCrawlError };
+    if (initialCrawlError) return { success: false, error: "DISCOVERY_FAILED", diagnostic: initialCrawlError };
     
     return { success: true, data: Array.from(foundOrds) };
   } catch (e: any) {
-    return { success: false, error: "Critical discovery failure." };
+    return { success: false, error: "CRITICAL_FAILURE", diagnostic: "Crawler crashed during execution." };
   }
 }

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Database, Loader2, Filter, Globe, AlertCircle, CheckCircle2, Network } from 'lucide-react';
+import { Database, Loader2, Filter, Globe, AlertCircle, CheckCircle2, Network, ShieldAlert } from 'lucide-react';
 import DraggablePanel from './draggable-panel';
 import { discoverOrdsServer, testNiagaraConnection } from '@/app/actions/niagara';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -41,6 +41,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
     const [isFetching, setIsFetching] = useState(false);
     const [isTesting, setIsTesting] = useState(false);
     const [fetchError, setFetchError] = useState<string | null>(null);
+    const [diagnosticInfo, setDiagnosticInfo] = useState<string | null>(null);
     const [connectedStation, setConnectedStation] = useState<string | null>(null);
     const { toast } = useToast();
 
@@ -62,6 +63,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
 
         setIsTesting(true);
         setFetchError(null);
+        setDiagnosticInfo(null);
         setConnectedStation(null);
         saveCredentials();
 
@@ -80,9 +82,11 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                 });
             } else {
                 setFetchError(result.error || "Connection failed.");
+                setDiagnosticInfo(result.diagnostic || null);
             }
         } catch (error: any) {
-            setFetchError("Unexpected error occurred during test.");
+            setFetchError("Unexpected error occurred.");
+            setDiagnosticInfo("The client failed to execute the server action.");
         } finally {
             setIsTesting(false);
         }
@@ -96,6 +100,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
 
         setIsFetching(true);
         setFetchError(null);
+        setDiagnosticInfo(null);
         setRawOrds('');
         setMapping(null);
         saveCredentials();
@@ -109,16 +114,18 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
 
             if (result.success && result.data) {
                 if (result.data.length === 0) {
-                    setFetchError("Discovery finished but no points were found. Ensure the path exists.");
+                    setFetchError("Discovery finished but no points were found.");
+                    setDiagnosticInfo("The path was reached, but no children were found. Check the 'Root Path'.");
                 } else {
                     setRawOrds(result.data.join('\n'));
                     toast({ title: "Discovery Complete", description: `Found ${result.data.length} ORDs.` });
                 }
             } else {
                 setFetchError(result.error || "Discovery failed.");
+                setDiagnosticInfo(result.diagnostic || null);
             }
         } catch (error: any) {
-            setFetchError("Unexpected error occurred during discovery.");
+            setFetchError("Unexpected discovery failure.");
         } finally {
             setIsFetching(false);
         }
@@ -184,7 +191,7 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                     <Network className="h-4 w-4 text-blue-500" />
                     <AlertTitle className="text-xs font-bold text-blue-600 uppercase">Networking Note</AlertTitle>
                     <AlertDescription className="text-[10px] text-blue-700 leading-tight">
-                        Ensure you are using <strong>HTTPS</strong> and your station allows <strong>Basic Auth</strong> in WebService.
+                        Cloud apps cannot see local IPs (192.x). Use a public URL or run the app locally.
                     </AlertDescription>
                 </Alert>
 
@@ -200,10 +207,10 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
 
                 {fetchError && (
                     <Alert variant="destructive" className="py-2 px-3">
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertTitle className="text-xs">Connection Error</AlertTitle>
-                        <AlertDescription className="text-[10px] leading-tight">
-                            {fetchError}
+                        <ShieldAlert className="h-4 w-4" />
+                        <AlertTitle className="text-xs font-bold uppercase">{fetchError}</AlertTitle>
+                        <AlertDescription className="text-[10px] leading-tight mt-1">
+                            {diagnosticInfo || "No additional diagnostic info available."}
                         </AlertDescription>
                     </Alert>
                 )}
