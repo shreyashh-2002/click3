@@ -132,7 +132,7 @@ async function loginToNiagara(creds: NiagaraCredentials): Promise<string> {
       });
 
       if (followRes.headers['set-cookie']) {
-        const finalCookies = followRes.headers['set-cookie'];
+        finalCookies = followRes.headers['set-cookie'];
         sessionCookies = [...sessionCookies, ...(Array.isArray(finalCookies) ? finalCookies : [finalCookies])];
       }
     }
