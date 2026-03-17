@@ -28,15 +28,19 @@ export type ServerActionResult<T> = {
  */
 function parseDigestHeader(header: string): Record<string, string> {
   const params: Record<string, string> = {};
-  // Match key="value" or key=value
-  const parts = header.substring(7).split(/,\s*(?=(?:[^"]|"[^"]*")*$)/);
-  parts.forEach(part => {
-    const [key, ...valParts] = part.split('=');
-    const value = valParts.join('=');
-    if (key && value) {
-      params[key.trim()] = value.replace(/"/g, '').trim();
-    }
-  });
+  try {
+    // Match key="value" or key=value
+    const parts = header.substring(7).split(/,\s*(?=(?:[^"]|"[^"]*")*$)/);
+    parts.forEach(part => {
+      const [key, ...valParts] = part.split('=');
+      const value = valParts.join('=');
+      if (key && value) {
+        params[key.trim().toLowerCase()] = value.replace(/"/g, '').trim();
+      }
+    });
+  } catch (e) {
+    console.error("Failed to parse Digest header:", header);
+  }
   return params;
 }
 
@@ -53,14 +57,17 @@ function calculateDigestResponse(
 ): string {
   const md5 = (str: string) => crypto.createHash('md5').update(str).digest('hex');
 
+  // HA1 = MD5(username:realm:password)
   const ha1 = md5(`${creds.user}:${params.realm}:${creds.pass}`);
+  
+  // HA2 = MD5(method:digestURI)
   const ha2 = md5(`${method}:${uri}`);
   
   // Niagara usually uses qop="auth"
-  // If multiple qop values are offered, pick 'auth'
   const qop = params.qop?.split(',')[0].trim();
 
   if (qop === 'auth' || qop === 'auth-int') {
+    // Response = MD5(HA1:nonce:nc:cnonce:qop:HA2)
     return md5(`${ha1}:${params.nonce}:${nc}:${cnonce}:${qop}:${ha2}`);
   }
   
@@ -80,17 +87,16 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
     path: parsedUrl.pathname + parsedUrl.search,
     headers: {
       'Accept': 'application/json',
-      // Adding a real-world User-Agent often helps with Niagara/Firewall filters
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     },
     agent: new https.Agent({ rejectUnauthorized: false }),
-    timeout: 10000,
+    timeout: 8000, // 8 seconds timeout
   };
 
   if (authHeader) {
     options.headers!['Authorization'] = authHeader;
   } else {
-    // Default to Basic as first attempt to trigger 401 challenge
+    // Start with Basic to trigger the challenge
     const basic = Buffer.from(`${creds.user}:${creds.pass}`).toString('base64');
     options.headers!['Authorization'] = `Basic ${basic}`;
   }
@@ -100,16 +106,16 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', async () => {
-        // Handle Digest Challenge
-        if (res.statusCode === 401 && res.headers['www-authenticate']?.includes('Digest') && !authHeader) {
+        // 1. Handle Digest Challenge
+        if (res.statusCode === 401 && res.headers['www-authenticate']?.toLowerCase().includes('digest') && !authHeader) {
           const params = parseDigestHeader(res.headers['www-authenticate']);
           const nc = '00000001';
           const cnonce = crypto.randomBytes(8).toString('hex');
           const qop = params.qop?.split(',')[0].trim();
           
-          const response = calculateDigestResponse('GET', options.path!, creds, params, nc, cnonce);
+          const responseHash = calculateDigestResponse('GET', options.path!, creds, params, nc, cnonce);
           
-          let digestHeader = `Digest username="${creds.user}", realm="${params.realm}", nonce="${params.nonce}", uri="${options.path}", response="${response}"`;
+          let digestHeader = `Digest username="${creds.user}", realm="${params.realm}", nonce="${params.nonce}", uri="${options.path}", response="${responseHash}"`;
           
           if (qop) {
             digestHeader += `, qop=${qop}, nc=${nc}, cnonce="${cnonce}"`;
@@ -127,40 +133,64 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
           return;
         }
 
+        // 2. Handle Authentication Failure
         if (res.statusCode === 401) {
           return reject({ 
             error: "AUTH_FAILED", 
-            diagnostic: "Niagara rejected credentials. Check Username/Password or 'Application Director' in Workbench logs for the exact rejection reason." 
+            diagnostic: "Niagara rejected credentials. Check Application Director in Workbench. Note: Some Niagara stations require 'Basic' to be explicitly enabled in WebService." 
           });
         }
         
+        // 3. Handle Permission Denied
         if (res.statusCode === 403) {
           return reject({ 
             error: "FORBIDDEN", 
-            diagnostic: "Access denied. Check if the user has 'Read' permissions and if 'CORS' Allowed Origins includes your local dev URL." 
+            diagnostic: "Access denied. Check if 'CORS' Allowed Origins includes 'http://localhost:9002'." 
+          });
+        }
+
+        // 4. Handle HTML Redirection (Common when ORD endpoint isn't ready)
+        const contentType = res.headers['content-type'] || '';
+        if (contentType.includes('text/html')) {
+          return reject({
+            error: "HTML_RESPONSE",
+            diagnostic: "Station returned a web page instead of data. This usually means you are hitting a Login Page. Verify your ORD path exists."
           });
         }
         
+        // 5. Success
         if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
           try {
             resolve(JSON.parse(data));
           } catch (e) {
             reject({ 
               error: "PARSE_ERROR", 
-              diagnostic: "Station returned non-JSON data. Ensure the ORD path doesn't redirect to a login page." 
+              diagnostic: "Received invalid JSON from station. Are you sure the endpoint returns JSON?" 
             });
           }
         } else {
           reject({ 
             error: `STATION_ERROR_${res.statusCode}`, 
-            diagnostic: `Unexpected status code from station: ${res.statusCode}` 
+            diagnostic: `Station responded with status code: ${res.statusCode}` 
           });
         }
       });
     });
 
-    req.on('error', (e: any) => reject({ error: "NETWORK_ERROR", diagnostic: `Could not reach ${parsedUrl.hostname}. ${e.message}` }));
-    req.on('timeout', () => { req.destroy(); reject({ error: "TIMEOUT", diagnostic: "Connection timed out. Check network path or station WebService status." }); });
+    req.on('error', (e: any) => {
+      reject({ 
+        error: "NETWORK_ERROR", 
+        diagnostic: `Connection failed: ${e.message}. Check if Niagara is running and reachable at ${parsedUrl.hostname}.` 
+      });
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      reject({ 
+        error: "TIMEOUT", 
+        diagnostic: "Connection timed out. Niagara is taking too long to respond." 
+      });
+    });
   });
 }
 
@@ -168,24 +198,29 @@ async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader
  * Proxies a read request to a Niagara station.
  */
 export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Promise<ServerActionResult<any>> {
-  const baseUrl = creds.url.endsWith('/') ? creds.url.slice(0, -1) : creds.url;
-  
-  let cleanPath = path;
-  if (!cleanPath.startsWith('station:|slot:/')) {
-    if (cleanPath.startsWith('slot:/')) {
-      cleanPath = `station:|${cleanPath}`;
-    } else {
-      cleanPath = `station:|slot:/${cleanPath.replace(/^\/+/, '')}`;
-    }
-  }
-
-  const url = `${baseUrl}/ord/${cleanPath}`;
-
   try {
+    const baseUrl = creds.url.endsWith('/') ? creds.url.slice(0, -1) : creds.url;
+    
+    let cleanPath = path;
+    if (!cleanPath.startsWith('station:|slot:/')) {
+      if (cleanPath.startsWith('slot:/')) {
+        cleanPath = `station:|${cleanPath}`;
+      } else {
+        cleanPath = `station:|slot:/${cleanPath.replace(/^\/+/, '')}`;
+      }
+    }
+
+    const url = `${baseUrl}/ord/${cleanPath}`;
+
     const data = await niagaraRequest(url, creds);
     return { success: true, data };
   } catch (err: any) {
-    return { success: false, error: err.error || "UNKNOWN", diagnostic: err.diagnostic || "An unhandled error occurred." };
+    // Ensure we ALWAYS return a standard object to prevent 500 errors
+    return { 
+      success: false, 
+      error: err.error || "CRITICAL_CRASH", 
+      diagnostic: err.diagnostic || "An unexpected server error occurred while connecting to Niagara." 
+    };
   }
 }
 
@@ -193,17 +228,21 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
  * Verifies connectivity and returns station info.
  */
 export async function testNiagaraConnection(creds: NiagaraCredentials): Promise<ServerActionResult<{ stationName: string; type: string }>> {
-  const result = await proxyFetchOrd('station:|slot:/', creds);
-  if (result.success && result.data) {
-    return {
-      success: true,
-      data: {
-        stationName: result.data.name || result.data.stationName || "Niagara Station",
-        type: result.data.type || "BStation"
-      }
-    };
+  try {
+    const result = await proxyFetchOrd('station:|slot:/', creds);
+    if (result.success && result.data) {
+      return {
+        success: true,
+        data: {
+          stationName: result.data.name || result.data.stationName || "Niagara Station",
+          type: result.data.type || "BStation"
+        }
+      };
+    }
+    return result;
+  } catch (e) {
+    return { success: false, error: "ACTION_FAILED", diagnostic: "Test connection crashed internally." };
   }
-  return result;
 }
 
 /**
