@@ -3,11 +3,12 @@
 /**
  * @fileOverview Server Actions for interacting with Niagara 4.
  * 
- * Uses the native 'https' module to reliably bypass self-signed certificate errors
- * and provide detailed diagnostics for JACE connectivity.
+ * Supports both Basic and Digest Authentication schemes.
+ * Uses the native 'https' module to reliably bypass self-signed certificate errors.
  */
 
 import https from 'https';
+import crypto from 'crypto';
 
 export type NiagaraCredentials = {
   url: string;
@@ -23,55 +24,111 @@ export type ServerActionResult<T> = {
 };
 
 /**
- * Performs a request to a Niagara station using the 'https' module to handle self-signed certs.
+ * Parses the WWW-Authenticate header for Digest parameters.
  */
-async function niagaraRequest(url: string, creds: NiagaraCredentials): Promise<any> {
-  const auth = Buffer.from(`${creds.user}:${creds.pass}`).toString('base64');
+function parseDigestHeader(header: string): Record<string, string> {
+  const params: Record<string, string> = {};
+  const parts = header.substring(7).split(/,\s*(?=(?:[^"]|"[^"]*")*$)/);
+  parts.forEach(part => {
+    const [key, value] = part.split('=');
+    if (key && value) {
+      params[key.trim()] = value.replace(/"/g, '').trim();
+    }
+  });
+  return params;
+}
+
+/**
+ * Calculates the Digest response hash.
+ */
+function calculateDigestResponse(
+  method: string,
+  uri: string,
+  creds: NiagaraCredentials,
+  params: Record<string, string>,
+  nc: string,
+  cnonce: string
+): string {
+  const md5 = (str: string) => crypto.createHash('md5').update(str).digest('hex');
+
+  const ha1 = md5(`${creds.user}:${params.realm}:${creds.pass}`);
+  const ha2 = md5(`${method}:${uri}`);
   
+  // Standard Digest response calculation for qop="auth"
+  if (params.qop === 'auth' || params.qop === 'auth-int') {
+    return md5(`${ha1}:${params.nonce}:${nc}:${cnonce}:${params.qop}:${ha2}`);
+  }
+  
+  // Legacy Digest (no qop)
+  return md5(`${ha1}:${params.nonce}:${ha2}`);
+}
+
+/**
+ * Performs a request to a Niagara station, handling Digest handshake if needed.
+ */
+async function niagaraRequest(url: string, creds: NiagaraCredentials, authHeader?: string): Promise<any> {
+  const parsedUrl = new URL(url);
   const options: https.RequestOptions = {
     method: 'GET',
+    hostname: parsedUrl.hostname,
+    port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+    path: parsedUrl.pathname + parsedUrl.search,
     headers: {
-      'Authorization': `Basic ${auth}`,
       'Accept': 'application/json',
+      'User-Agent': 'Niagara-Point-Mapper-Dev',
     },
-    // This is the magic fix for self-signed certificates
-    agent: new https.Agent({
-      rejectUnauthorized: false,
-    }),
+    agent: new https.Agent({ rejectUnauthorized: false }),
     timeout: 10000,
   };
 
+  if (authHeader) {
+    options.headers!['Authorization'] = authHeader;
+  } else {
+    // Default to Basic as first attempt
+    const basic = Buffer.from(`${creds.user}:${creds.pass}`).toString('base64');
+    options.headers!['Authorization'] = `Basic ${basic}`;
+  }
+
   return new Promise((resolve, reject) => {
-    const req = https.get(url, options, (res) => {
+    const req = https.get(options, (res) => {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        if (res.statusCode === 401) return reject({ error: "AUTH_FAILED", diagnostic: "Niagara rejected credentials. Check WebService Basic Auth." });
-        if (res.statusCode === 403) return reject({ error: "FORBIDDEN", diagnostic: "Access denied. Check User Permissions or CORS." });
-        if (res.statusCode === 404) return reject({ error: "NOT_FOUND", diagnostic: "The ORD path was not found." });
+      res.on('end', async () => {
+        // Handle Digest Challenge
+        if (res.statusCode === 401 && res.headers['www-authenticate']?.includes('Digest') && !authHeader) {
+          const params = parseDigestHeader(res.headers['www-authenticate']);
+          const nc = '00000001';
+          const cnonce = crypto.randomBytes(8).toString('hex');
+          const response = calculateDigestResponse('GET', options.path!, creds, params, nc, cnonce);
+          
+          const digestHeader = `Digest username="${creds.user}", realm="${params.realm}", nonce="${params.nonce}", uri="${options.path}", qop=${params.qop}, nc=${nc}, cnonce="${cnonce}", response="${response}", opaque="${params.opaque || ''}"`;
+          
+          try {
+            const retryData = await niagaraRequest(url, creds, digestHeader);
+            resolve(retryData);
+          } catch (e) {
+            reject(e);
+          }
+          return;
+        }
+
+        if (res.statusCode === 401) return reject({ error: "AUTH_FAILED", diagnostic: "Niagara rejected credentials. Check Username/Password or WebService Auth schemes." });
+        if (res.statusCode === 403) return reject({ error: "FORBIDDEN", diagnostic: "Access denied. Check User Permissions or CORS Origins." });
         
         if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
           try {
             resolve(JSON.parse(data));
           } catch (e) {
-            reject({ error: "PARSE_ERROR", diagnostic: "Station returned non-JSON data. This usually means a redirect to a login page." });
+            reject({ error: "PARSE_ERROR", diagnostic: "Station returned non-JSON data. Ensure the ORD path is correct and doesn't redirect to HTML." });
           }
         } else {
-          reject({ error: `STATION_ERROR_${res.statusCode}`, diagnostic: `Unexpected status code: ${res.statusCode}` });
+          reject({ error: `STATION_ERROR_${res.statusCode}`, diagnostic: `Unexpected status code from station: ${res.statusCode}` });
         }
       });
     });
 
-    req.on('error', (e: any) => {
-      if (e.code === 'ECONNREFUSED') reject({ error: "CONNECTION_REFUSED", diagnostic: "The station refused the connection. Check IP/Port." });
-      else if (e.code === 'ETIMEDOUT') reject({ error: "TIMEOUT", diagnostic: "Connection timed out." });
-      else reject({ error: "NETWORK_ERROR", diagnostic: e.message });
-    });
-
-    req.on('timeout', () => {
-      req.destroy();
-      reject({ error: "TIMEOUT", diagnostic: "The request timed out after 10 seconds." });
-    });
+    req.on('error', (e: any) => reject({ error: "NETWORK_ERROR", diagnostic: e.message }));
+    req.on('timeout', () => { req.destroy(); reject({ error: "TIMEOUT", diagnostic: "Connection timed out." }); });
   });
 }
 
@@ -90,8 +147,6 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
     }
   }
 
-  // Use encodeURI for the whole thing, or encodeURIComponent for the ORD part if needed.
-  // Niagara ORD servlets are picky about encoding.
   const url = `${baseUrl}/ord/${cleanPath}`;
 
   try {
@@ -126,8 +181,8 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
   const foundOrds: Set<string> = new Set();
   const visitedPaths: Set<string> = new Set();
   let requestCount = 0;
-  const MAX_REQUESTS = 50; 
-  const MAX_DEPTH = 5;
+  const MAX_REQUESTS = 30; // Reduced for Digest performance
+  const MAX_DEPTH = 3;
 
   async function crawl(path: string, depth: number = 0) {
     if (depth > MAX_DEPTH || visitedPaths.has(path) || requestCount >= MAX_REQUESTS) return;
@@ -157,7 +212,7 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
 
         if (isPoint) {
           foundOrds.add(ord);
-        } else if (isFolder && depth < MAX_DEPTH && foundOrds.size < 100) {
+        } else if (isFolder && depth < MAX_DEPTH && foundOrds.size < 50) {
           await crawl(ord, depth + 1);
         }
       }
@@ -168,6 +223,6 @@ export async function discoverOrdsServer(startPath: string, creds: NiagaraCreden
     await crawl(startPath);
     return { success: true, data: Array.from(foundOrds) };
   } catch (e: any) {
-    return { success: false, error: "CRITICAL_FAILURE", diagnostic: "Discovery engine crashed." };
+    return { success: false, error: "CRITICAL_FAILURE", diagnostic: "Discovery engine failed." };
   }
 }
