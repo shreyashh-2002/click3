@@ -32,6 +32,10 @@ type PointMappingOutput = {
     generatedScriptPreview: string;
 };
 
+interface OrdMapperPanelProps {
+    initialPosition: { x: number; y: number };
+}
+
 export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps) {
     const [rawOrds, setRawOrds] = useState('');
     const [stationUrl, setStationUrl] = useState('');
@@ -68,13 +72,18 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
         setConnectedStation(null);
         saveCredentials();
 
-        const result = await testNiagaraConnection({ url: stationUrl, user: username, pass: password });
-        if (result.success && result.data) {
-            setConnectedStation(result.data.stationName);
-            toast({ title: "Connected!", description: `Reached: ${result.data.stationName}` });
-        } else {
-            setFetchError(result.error || "Connection Failed");
-            setDiagnosticInfo(result.diagnostic || null);
+        try {
+            const result = await testNiagaraConnection({ url: stationUrl, user: username, pass: password });
+            if (result.success && result.data) {
+                setConnectedStation(result.data.stationName);
+                toast({ title: "Connected!", description: `Reached: ${result.data.stationName}` });
+            } else {
+                setFetchError(result.error || "Connection Failed");
+                setDiagnosticInfo(result.diagnostic || null);
+            }
+        } catch (e) {
+            setFetchError("ACTION_CRASH");
+            setDiagnosticInfo("The server encountered an unhandled error. This usually means a networking timeout.");
         }
         setIsTesting(false);
     };
@@ -145,9 +154,9 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
                         <AccordionContent className="bg-amber-500/5 rounded-md p-3 space-y-2 border border-amber-500/20">
                             <ul className="text-[10px] space-y-1 text-amber-700 list-disc pl-4">
                                 <li><strong>WebService:</strong> Set 'Https Only' to true and check 'Basic Auth'.</li>
-                                <li><strong>CORS:</strong> Add this app's URL to 'Allowed Origins' in WebService.</li>
-                                <li><strong>Network:</strong> Local IPs (192.168.x.x) only work if the app is running locally.</li>
+                                <li><strong>CORS:</strong> Add this app's URL (e.g., http://localhost:9002) to 'Allowed Origins' in WebService.</li>
                                 <li><strong>Permissions:</strong> Ensure the user has 'Read' and 'Invoke' roles.</li>
+                                <li><strong>Application Director:</strong> Check Workbench logs for specific rejection reasons.</li>
                             </ul>
                         </AccordionContent>
                     </AccordionItem>
@@ -226,8 +235,4 @@ export default function OrdMapperPanel({ initialPosition }: OrdMapperPanelProps)
             </div>
         </DraggablePanel>
     );
-}
-
-interface OrdMapperPanelProps {
-    initialPosition: { x: number; y: number };
 }

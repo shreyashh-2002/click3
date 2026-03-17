@@ -60,7 +60,7 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
         return { 
           success: false, 
           error: "AUTH_FAILED",
-          diagnostic: "Niagara rejected your credentials. Ensure 'Basic Auth' is enabled and password is correct."
+          diagnostic: "Niagara rejected your credentials. Ensure 'Basic Auth' is enabled in the WebService and your password is correct."
         };
       }
       if (response.status === 403) {
@@ -74,20 +74,32 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
       return { success: false, error: `STATION_ERROR_${response.status}`, diagnostic: `The station returned an unexpected HTTP ${response.status} status.` };
     }
 
-    const data = await response.json();
-    return { success: true, data };
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return {
+        success: false,
+        error: "INVALID_CONTENT_TYPE",
+        diagnostic: "Station returned HTML/Text instead of JSON. This usually happens if you are redirected to a login page. Check 'Basic Auth' settings."
+      };
+    }
+
+    try {
+      const data = await response.json();
+      return { success: true, data };
+    } catch (e) {
+      return { success: false, error: "PARSE_ERROR", diagnostic: "Failed to parse JSON response from the station." };
+    }
+
   } catch (error: any) {
     clearTimeout(timeoutId);
     
     if (error.name === 'AbortError') return { success: false, error: "TIMEOUT", diagnostic: "The station took too long to respond (10s). Check your connection." };
     
-    // Check for local IP issues
-    const isLocalIp = baseUrl.includes('192.168.') || baseUrl.includes('10.') || baseUrl.includes('172.');
-    const diagnostic = isLocalIp 
-      ? "You are using a local IP. This cloud app cannot reach your private network. Use a public URL or run the app locally."
-      : error.message || "Unknown network error.";
-
-    return { success: false, error: "NETWORK_ERROR", diagnostic };
+    return { 
+      success: false, 
+      error: "NETWORK_ERROR", 
+      diagnostic: error.message || "Unknown network error. Ensure the station is reachable and allows HTTPS connections." 
+    };
   }
 }
 
@@ -97,7 +109,7 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
 export async function testNiagaraConnection(creds: NiagaraCredentials): Promise<ServerActionResult<{ stationName: string; type: string }>> {
   try {
     const result = await proxyFetchOrd('station:|slot:/', creds);
-    if (result.success) {
+    if (result.success && result.data) {
       return {
         success: true,
         data: {
