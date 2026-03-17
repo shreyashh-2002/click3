@@ -183,6 +183,8 @@ export async function proxyFetchOrd(path: string, creds: NiagaraCredentials): Pr
         const bodySnippet = result.data.substring(0, 150).trim();
         const isHtml = bodySnippet.toLowerCase().includes('<!doctype html') || bodySnippet.toLowerCase().includes('<html');
         
+        console.warn(`[Niagara Parse Error]: Data snippet: "${bodySnippet}..."`);
+
         return { 
           success: false, 
           error: "PARSE_ERROR", 
