@@ -1,6 +1,10 @@
 "use client";
 
+<<<<<<< HEAD
 import { useEffect, useRef, useState } from "react";
+=======
+import { useEffect, useRef } from "react";
+>>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -19,10 +23,13 @@ type ThreeSceneProps = {
   modelUrl: string | null;
   extractionParams: ExtractionParams | null;
   onExtractionResults: (results: string[]) => void;
+<<<<<<< HEAD
   selectedCoord?: THREE.Vector3 | null;
   onMeshListLoaded?: (meshes: { name: string; center: THREE.Vector3 }[]) => void;
   labelMode?: 'none' | 'name' | 'coords';
   labelPrefix?: string;
+=======
+>>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
 };
 
 export default function ThreeScene({ 
@@ -30,6 +37,7 @@ export default function ThreeScene({
   onMeshSelect,
   modelUrl, 
   extractionParams, 
+<<<<<<< HEAD
   onExtractionResults,
   selectedCoord,
   onMeshListLoaded,
@@ -37,11 +45,16 @@ export default function ThreeScene({
   labelPrefix = ''
 }: ThreeSceneProps) {
   const [modelLoadCounter, setModelLoadCounter] = useState(0);
+=======
+  onExtractionResults 
+}: ThreeSceneProps) {
+>>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const modelRef = useRef<THREE.Object3D | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+<<<<<<< HEAD
   const markerRef = useRef<THREE.Mesh | null>(null);
   const labelsContainerRef = useRef<HTMLDivElement>(null);
   const activeLabelsRef = useRef<{ element: HTMLDivElement; center: THREE.Vector3 }[]>([]);
@@ -158,6 +171,8 @@ export default function ThreeScene({
       }
     });
   }, [labelMode, labelPrefix, modelUrl, modelLoadCounter]);
+=======
+>>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
 
   useEffect(() => {
     const currentMount = mountRef.current;
@@ -233,6 +248,7 @@ export default function ThreeScene({
       if (modelRef.current) scene.remove(modelRef.current);
       scene.add(model);
       modelRef.current = model;
+<<<<<<< HEAD
       onCoordChangeRef.current(null);
       onMeshSelectRef.current(null);
       
@@ -268,6 +284,13 @@ export default function ThreeScene({
         onMeshListLoadedRef.current(loadedMeshes);
       }
       setModelLoadCounter(prev => prev + 1);
+=======
+      onCoordChange(null);
+      onMeshSelect(null);
+      
+      camera.lookAt(0, 0, 0);
+      controls.target.set(0, 0, 0);
+>>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
     };
 
     const createFallback = () => {
@@ -296,6 +319,10 @@ export default function ThreeScene({
 
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
+<<<<<<< HEAD
+=======
+    let marker: THREE.Mesh | null = null;
+>>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
 
     const onClick = (event: MouseEvent) => {
       const clickedOnUi = (event.target as HTMLElement).closest(`header, [data-sidebar="sidebar"], .floating-action-button, [id$="-panel"], .mesh-name-overlay`);
@@ -314,6 +341,7 @@ export default function ThreeScene({
         
         // Update selected mesh name
         const meshName = intersection.object.name || `Unnamed Mesh (${intersection.object.uuid.slice(0, 5)})`;
+<<<<<<< HEAD
         onMeshSelectRef.current(meshName);
 
         onCoordChangeRef.current(point.clone());
@@ -324,6 +352,17 @@ export default function ThreeScene({
         }
         markerRef.current.position.copy(point);
         markerRef.current.visible = true;
+=======
+        onMeshSelect(meshName);
+
+        onCoordChange(point.clone());
+        if (!marker) {
+          // Marker Size: 0.15
+          marker = new THREE.Mesh(new THREE.SphereGeometry(0.15), new THREE.MeshBasicMaterial({ color: 0x8b5cf6 }));
+          scene.add(marker);
+        }
+        marker.position.copy(point);
+>>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
       }
     };
 
@@ -333,6 +372,7 @@ export default function ThreeScene({
     const animate = () => {
       frameId = requestAnimationFrame(animate);
       controls.update();
+<<<<<<< HEAD
 
       // Project and position active label overlays in 2D
       const labels = activeLabelsRef.current;
@@ -367,6 +407,8 @@ export default function ThreeScene({
         }
       }
 
+=======
+>>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
       renderer.render(scene, camera);
     };
     animate();
@@ -382,7 +424,11 @@ export default function ThreeScene({
         currentMount.removeChild(renderer.domElement);
       }
     };
+<<<<<<< HEAD
   }, [modelUrl]);
+=======
+  }, [modelUrl, onCoordChange, onMeshSelect]);
+>>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
 
   useEffect(() => {
     if (!extractionParams || !modelRef.current) return;
@@ -427,10 +473,14 @@ export default function ThreeScene({
     onExtractionResults(Array.from(new Set(results)));
   }, [extractionParams, onExtractionResults]);
 
+<<<<<<< HEAD
   return (
     <div className="relative w-full h-full">
       <div ref={mountRef} className="w-full h-full absolute top-0 left-0 z-0" />
       <div ref={labelsContainerRef} className="absolute inset-0 pointer-events-none overflow-hidden z-10" />
     </div>
   );
+=======
+  return <div ref={mountRef} className="w-full h-full absolute top-0 left-0 z-0" />;
+>>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
 }
