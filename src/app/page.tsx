@@ -68,9 +68,8 @@ export default function Home() {
   const [extractionResults, setExtractionResults] = useState<string[]>([]);
   const [meshList, setMeshList] = useState<MeshListItem[]>([]);
 
-  
-  const [extractionParams, setExtractionParams] = useState<{ yThreshold: number; corners: number[][] } | null>(null);
-  const [extractionResults, setExtractionResults] = useState<string[]>([]);
+
+
 
 
   useEffect(() => {
