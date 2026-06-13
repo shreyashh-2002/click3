@@ -3,20 +3,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Button } from "@/components/ui/button";
-<<<<<<< HEAD
+
 import { Upload, SquareAsterisk, Layout, ChevronRight, Database, BookOpen, Wind, Map, Layers, Copy, Check, Tag } from 'lucide-react';
-=======
+
 import { Upload, SquareAsterisk, Layout, ChevronRight, Database, BookOpen, Wind, Map, Layers, Copy, Check } from 'lucide-react';
->>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
+
 import ThreeScene from '@/components/three-scene';
 import CornersGeneratorPanel from '@/components/corners-generator-panel';
 import MeshExtractionPanel from '@/components/mesh-extraction-panel';
 import OrdMapperPanel from '@/components/ord-mapper-panel';
 import DraggablePanel from '@/components/draggable-panel';
-<<<<<<< HEAD
+
 import MeshNamesPanel, { MeshListItem } from '@/components/mesh-names-panel';
-=======
->>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
+
 import { useToast } from '@/hooks/use-toast';
 import {
   Sidebar,
@@ -53,15 +52,14 @@ export default function Home() {
   
   const [showCoordinates, setShowCoordinates] = useState(false);
   const [showMeshExtraction, setShowMeshExtraction] = useState(false);
-<<<<<<< HEAD
+
   const [showMeshNames, setShowMeshNames] = useState(false);
-=======
->>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
+
   const [showOrdMapper, setShowOrdMapper] = useState(false);
   const [showLms, setShowLms] = useState(false);
   const [showHvac, setShowHvac] = useState(false);
   const [showFloorLayout, setShowFloorLayout] = useState(false);
-<<<<<<< HEAD
+
 
   const [labelMode, setLabelMode] = useState<'none' | 'name' | 'coords'>('none');
   const [labelPrefix, setLabelPrefix] = useState('');
@@ -69,11 +67,11 @@ export default function Home() {
   const [extractionParams, setExtractionParams] = useState<{ yThreshold: number; corners: number[][] } | null>(null);
   const [extractionResults, setExtractionResults] = useState<string[]>([]);
   const [meshList, setMeshList] = useState<MeshListItem[]>([]);
-=======
+
   
   const [extractionParams, setExtractionParams] = useState<{ yThreshold: number; corners: number[][] } | null>(null);
   const [extractionResults, setExtractionResults] = useState<string[]>([]);
->>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
+
 
   useEffect(() => {
     setIsClient(true);
@@ -83,7 +81,7 @@ export default function Home() {
     setSceneClick(newCoords);
   }, []);
 
-<<<<<<< HEAD
+
   const handleMeshListLoaded = useCallback((loadedMeshes: MeshListItem[]) => {
     setMeshList(loadedMeshes);
   }, []);
@@ -98,8 +96,7 @@ export default function Home() {
     });
   }, [toast]);
 
-=======
->>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
+
   const handleMeshSelect = useCallback((name: string | null) => {
     setSelectedMesh(name);
     setIsCopied(false);
@@ -187,7 +184,6 @@ export default function Home() {
                                 <span>Mesh Extraction</span>
                               </SidebarMenuSubButton>
                             </SidebarMenuSubItem>
-<<<<<<< HEAD
                             <SidebarMenuSubItem>
                               <SidebarMenuSubButton 
                                 onClick={() => setShowMeshNames(!showMeshNames)}
@@ -197,8 +193,7 @@ export default function Home() {
                                 <span>Mesh Names</span>
                               </SidebarMenuSubButton>
                             </SidebarMenuSubItem>
-=======
->>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
+
                           </SidebarMenuSub>
                         </CollapsibleContent>
                       </div>
@@ -266,13 +261,12 @@ export default function Home() {
               modelUrl={modelUrl}
               extractionParams={extractionParams}
               onExtractionResults={handleExtractionResults}
-<<<<<<< HEAD
+
               selectedCoord={sceneClick}
               onMeshListLoaded={handleMeshListLoaded}
               labelMode={labelMode}
               labelPrefix={labelPrefix}
-=======
->>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
+
             />
 
             {/* Mesh Name Overlay (Top Left) */}
@@ -319,7 +313,7 @@ export default function Home() {
               />
             )}
 
-<<<<<<< HEAD
+
             {showMeshNames && (
               <MeshNamesPanel
                 meshes={meshList}
@@ -333,8 +327,7 @@ export default function Home() {
               />
             )}
 
-=======
->>>>>>> dffa6ce0c850fa1859f0f2c1b23ea74262c9cd1d
+
             {showOrdMapper && <OrdMapperPanel initialPosition={{ x: 20, y: 500 }} />}
 
             {showLms && (
