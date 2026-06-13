@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 
 import { Upload, SquareAsterisk, Layout, ChevronRight, Database, BookOpen, Wind, Map, Layers, Copy, Check, Tag } from 'lucide-react';
 
-import { Upload, SquareAsterisk, Layout, ChevronRight, Database, BookOpen, Wind, Map, Layers, Copy, Check } from 'lucide-react';
+
 
 import ThreeScene from '@/components/three-scene';
 import CornersGeneratorPanel from '@/components/corners-generator-panel';
