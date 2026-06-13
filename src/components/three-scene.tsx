@@ -78,6 +78,8 @@ export default function ThreeScene({
           new THREE.SphereGeometry(0.15),
           new THREE.MeshBasicMaterial({ color: 0x8b5cf6 })
         );
+      }
+      if (markerRef.current.parent !== scene) {
         scene.add(markerRef.current);
       }
       markerRef.current.position.copy(selectedCoord);
@@ -123,7 +125,7 @@ export default function ThreeScene({
           }
 
           const el = document.createElement('div');
-          el.className = 'absolute px-1.5 py-0.5 rounded text-[9px] font-mono font-medium shadow-md transition-all duration-150 border pointer-events-auto cursor-pointer select-none -translate-x-1/2 -translate-y-1/2 bg-background/95 text-foreground border-border/70 hover:bg-primary hover:text-primary-foreground hover:scale-105 active:scale-95 duration-100 z-10';
+          el.className = 'absolute px-1.5 py-0.5 rounded text-[9px] font-mono font-medium shadow-md transition-all duration-150 border pointer-events-auto cursor-pointer select-none -translate-x-1/2 -translate-y-1/2 bg-background/95 text-foreground border-border/70 hover:bg-primary hover:text-primary-foreground hover:scale-105 hover:z-[100] hover:shadow-lg hover:border-primary/50 active:scale-95 duration-100 z-10';
           
           if (labelMode === 'name') {
             el.textContent = name;
@@ -141,9 +143,11 @@ export default function ThreeScene({
                 new THREE.SphereGeometry(0.15),
                 new THREE.MeshBasicMaterial({ color: 0x8b5cf6 })
               );
-              sceneRef.current.add(markerRef.current);
             }
-            if (markerRef.current) {
+            if (markerRef.current && sceneRef.current) {
+              if (markerRef.current.parent !== sceneRef.current) {
+                sceneRef.current.add(markerRef.current);
+              }
               markerRef.current.position.copy(center);
               markerRef.current.visible = true;
             }
@@ -320,6 +324,8 @@ export default function ThreeScene({
         if (!markerRef.current) {
           // Marker Size: 0.15
           markerRef.current = new THREE.Mesh(new THREE.SphereGeometry(0.15), new THREE.MeshBasicMaterial({ color: 0x8b5cf6 }));
+        }
+        if (markerRef.current.parent !== scene) {
           scene.add(markerRef.current);
         }
         markerRef.current.position.copy(point);
@@ -378,6 +384,7 @@ export default function ThreeScene({
       renderer.dispose();
       dracoLoader.dispose();
       ktx2Loader.dispose();
+      markerRef.current = null;
       if (currentMount.contains(renderer.domElement)) {
         currentMount.removeChild(renderer.domElement);
       }
